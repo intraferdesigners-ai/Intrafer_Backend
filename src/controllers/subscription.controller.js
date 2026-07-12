@@ -25,11 +25,25 @@ const createOrder = catchAsync(async (req, res) => {
   const vendor = await Vendor.findOne({ userId: req.user._id });
   if (!vendor) return error(res, 'Vendor profile not found.', 404);
 
-  const order = await razorpayService.createOrder({
-    amount: plan.price,
-    receipt: `sub_${vendor._id}_${Date.now()}`,
-    notes: { vendorId: vendor._id.toString(), planName },
-  });
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    console.error('[Razorpay] Missing API keys:', {
+      key_id: !!process.env.RAZORPAY_KEY_ID,
+      key_secret: !!process.env.RAZORPAY_KEY_SECRET,
+    });
+    return error(res, 'Payment gateway not configured.', 500);
+  }
+
+  let order;
+  try {
+    order = await razorpayService.createOrder({
+      amount: plan.price,
+      receipt: `sub_${vendor._id}_${Date.now()}`,
+      notes: { vendorId: vendor._id.toString(), planName },
+    });
+  } catch (err) {
+    console.error('[Razorpay] createOrder error:', err.error?.description || err.message, err.stack);
+    return error(res, 'Unable to create payment order. Please try again.', 502);
+  }
 
   await Subscription.create({
     vendorId: vendor._id,
