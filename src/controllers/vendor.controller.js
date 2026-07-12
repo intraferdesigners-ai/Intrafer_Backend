@@ -1,0 +1,152 @@
+const Vendor = require('../models/Vendor.model');
+const Project = require('../models/Project.model');
+const Lead = require('../models/Lead.model');
+const Subscription = require('../models/Subscription.model');
+const catchAsync = require('../utils/catchAsync');
+const { success, error } = require('../utils/apiResponse');
+const { getFileUrl } = require('../middleware/upload');
+
+const getProfile = catchAsync(async (req, res) => {
+  const vendor = await Vendor.findOne({ userId: req.user._id }).populate('userId', 'name email phone');
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+  return success(res, { vendor });
+});
+
+const updateProfile = catchAsync(async (req, res) => {
+  const { businessName, description, specializations, location } = req.body;
+  const updates = {};
+  if (businessName !== undefined) updates.businessName = businessName;
+  if (description !== undefined) updates.description = description;
+  if (specializations !== undefined) updates.specializations = specializations;
+  if (location !== undefined) updates.location = location;
+
+  const vendor = await Vendor.findOneAndUpdate(
+    { userId: req.user._id },
+    updates,
+    { new: true, runValidators: true }
+  ).populate('userId', 'name email phone');
+
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+  return success(res, { vendor });
+});
+
+const createProject = catchAsync(async (req, res) => {
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+
+  const images = req.files ? req.files.map((f) => getFileUrl(f)) : [];
+
+  const project = await Project.create({
+    vendorId: vendor._id,
+    images,
+    sortOrder: Date.now(),
+    ...req.body,
+  });
+
+  return success(res, { project }, 'Project created.', 201);
+});
+
+const getProjects = catchAsync(async (req, res) => {
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+
+  const projects = await Project.find({ vendorId: vendor._id })
+    .sort({ sortOrder: 1, createdAt: -1 });
+  return success(res, { projects });
+});
+
+const updateProject = catchAsync(async (req, res) => {
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+
+  const project = await Project.findOneAndUpdate(
+    { _id: req.params.id, vendorId: vendor._id },
+    req.body,
+    { new: true, runValidators: true }
+  );
+
+  if (!project) return error(res, 'Project not found.', 404);
+  return success(res, { project });
+});
+
+const deleteProject = catchAsync(async (req, res) => {
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+
+  const project = await Project.findOneAndDelete({ _id: req.params.id, vendorId: vendor._id });
+  if (!project) return error(res, 'Project not found.', 404);
+
+  return success(res, {}, 'Project deleted.');
+});
+
+const reorderProjects = catchAsync(async (req, res) => {
+  const { projectIds } = req.body;
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor) return error(res, 'Vendor not found.', 404);
+
+  const updates = projectIds.map((id, index) =>
+    Project.updateOne(
+      { _id: id, vendorId: vendor._id },
+      { $set: { sortOrder: index } }
+    )
+  );
+  await Promise.all(updates);
+
+  return success(res, {}, 'Projects reordered.');
+});
+
+const getAnalytics = catchAsync(async (req, res) => {
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+
+  const { totalLeads, wonLeads, rating } = vendor;
+  const winRate = totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 100) : 0;
+
+  const subscription = await Subscription.findOne({
+    vendorId: vendor._id,
+    status: 'active',
+  });
+
+  let creditsUsed = 0;
+  let creditsTotal = 0;
+  if (subscription) {
+    creditsTotal = subscription.leadsPerMonth || 0;
+    const periodStart = subscription.startDate ||
+      new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    creditsUsed = await Lead.countDocuments({
+      vendorId: vendor._id,
+      status: { $in: ['accepted', 'contacted', 'quotation_sent', 'won', 'lost'] },
+      updatedAt: { $gte: periodStart },
+    });
+  }
+
+  return success(res, {
+    totalLeads,
+    wonLeads,
+    winRate: `${winRate}%`,
+    rating,
+    creditsUsed,
+    creditsTotal,
+    creditsRemaining: Math.max(0, creditsTotal - creditsUsed),
+  });
+});
+
+const updateNotes = catchAsync(async (req, res) => {
+  const { notes } = req.body;
+  const lead = await Lead.findById(req.params.id);
+  if (!lead) return error(res, 'Lead not found.', 404);
+
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor || !lead.vendorId.equals(vendor._id))
+    return error(res, 'Not authorised.', 403);
+
+  lead.vendorNotes = notes;
+  await lead.save();
+  return success(res, { vendorNotes: lead.vendorNotes }, 'Notes saved.');
+});
+
+module.exports = {
+  getProfile, updateProfile,
+  createProject, getProjects, updateProject, deleteProject, reorderProjects,
+  getAnalytics, updateNotes,
+};
