@@ -19,6 +19,7 @@ const reviewRoutes       = require('./routes/review.routes');
 const visitorRoutes      = require('./routes/visitor.routes');
 
 const app = express();
+app.set('trust proxy', 1);
 
 const allowedOrigins = [
   'http://localhost:3000',

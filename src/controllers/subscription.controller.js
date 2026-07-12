@@ -37,7 +37,7 @@ const createOrder = catchAsync(async (req, res) => {
   try {
     order = await razorpayService.createOrder({
       amount: plan.price,
-      receipt: `sub_${vendor._id}_${Date.now()}`,
+      receipt: `rcpt_${vendor._id.toString().slice(-8)}_${Date.now().toString().slice(-8)}`,
       notes: { vendorId: vendor._id.toString(), planName },
     });
   } catch (err) {
