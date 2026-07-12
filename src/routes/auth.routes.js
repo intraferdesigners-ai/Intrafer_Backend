@@ -1,5 +1,5 @@
 const express = require('express');
-const { register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile } = require('../controllers/auth.controller');
+const { register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, forgotPassword } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const { authLimiter, otpLimiter } = require('../middleware/rateLimiter');
@@ -15,5 +15,6 @@ router.post('/refresh',    refreshToken);
 router.post('/logout',     protect, logout);
 router.get('/me',          protect, getMe);
 router.put('/profile',     protect, updateProfile);
+router.post('/forgot-password', authLimiter, forgotPassword);
 
 module.exports = router;

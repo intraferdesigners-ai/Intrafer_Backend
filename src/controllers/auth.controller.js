@@ -131,4 +131,17 @@ const updateProfile = catchAsync(async (req, res) => {
   return success(res, { user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role } }, 'Profile updated.');
 });
 
-module.exports = { register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile };
+const forgotPassword = catchAsync(async (req, res) => {
+  const { email } = req.body;
+
+  const user = await User.findOne({ email: email?.toLowerCase() });
+  if (user) {
+    // TODO: generate reset token, save to DB, send via email once Resend is configured
+    console.log(`[ForgotPassword] Reset requested for: ${email}`);
+  }
+
+  // Always return success — don't reveal whether the email is registered
+  return success(res, {}, 'If this email is registered, you will receive a reset link shortly.');
+});
+
+module.exports = { register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, forgotPassword };
