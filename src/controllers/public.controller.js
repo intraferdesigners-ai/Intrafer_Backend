@@ -55,6 +55,16 @@ const getVendorProjects = catchAsync(async (req, res) => {
   return success(res, { projects });
 });
 
+const getProjectById = catchAsync(async (req, res) => {
+  const project = await Project.findOne({
+    _id: req.params.id,
+    isPublished: true,
+  }).populate('vendorId', 'businessName location rating reviewCount profilePhoto isApproved');
+
+  if (!project) return error(res, 'Project not found.', 404);
+  return success(res, { project });
+});
+
 const getSimilarVendors = catchAsync(async (req, res) => {
   const current = await Vendor.findById(req.params.id);
   if (!current) return error(res, 'Vendor not found.', 404);
@@ -107,4 +117,4 @@ const getStats = catchAsync(async (req, res) => {
   return success(res, { vendorCount, projectCount, enquiryCount, avgRating, featuredCount });
 });
 
-module.exports = { getVendors, getVendorById, getVendorProjects, getSimilarVendors, getGallery, getStats };
+module.exports = { getVendors, getVendorById, getVendorProjects, getProjectById, getSimilarVendors, getGallery, getStats };
