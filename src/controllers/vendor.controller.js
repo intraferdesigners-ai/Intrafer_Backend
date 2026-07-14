@@ -36,11 +36,17 @@ const createProject = catchAsync(async (req, res) => {
 
   const images = req.files ? req.files.map((f) => getFileUrl(f)) : [];
 
+  const { beforeImageIndex, afterImageIndex, ...rest } = req.body;
+  const beforeImage = images[parseInt(beforeImageIndex, 10)] || '';
+  const afterImage  = images[parseInt(afterImageIndex, 10)]  || '';
+
   const project = await Project.create({
     vendorId: vendor._id,
     images,
+    beforeImage,
+    afterImage,
     sortOrder: Date.now(),
-    ...req.body,
+    ...rest,
   });
 
   return success(res, { project }, 'Project created.', 201);

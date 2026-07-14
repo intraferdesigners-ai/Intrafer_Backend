@@ -6,6 +6,8 @@ const projectSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
     images: [{ type: String }],
+    beforeImage: { type: String, default: '' },
+    afterImage:  { type: String, default: '' },
     projectType: { type: String, required: true },
     location: { type: String, default: '' },
     completedYear: { type: Number },
