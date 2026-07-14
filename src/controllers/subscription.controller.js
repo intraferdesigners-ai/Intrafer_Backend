@@ -6,10 +6,11 @@ const { success, error } = require('../utils/apiResponse');
 const razorpayService = require('../services/razorpay.service');
 const notifService = require('../services/notification.service');
 
+// price is in paise (matches Razorpay's expected unit and planPrice storage)
 const PLANS = [
-  { name: 'Basic',   price: 299900,  leadsPerMonth: 5,   durationDays: 30  },
-  { name: 'Pro',     price: 699900,  leadsPerMonth: 15,  durationDays: 30  },
-  { name: 'Premium', price: 1999900, leadsPerMonth: 999, durationDays: 365 },
+  { name: '3 Month',  price: 799900,  leadsPerMonth: 10, durationDays: 90  },
+  { name: '6 Month',  price: 1499900, leadsPerMonth: 10, durationDays: 180 },
+  { name: '12 Month', price: 1999900, leadsPerMonth: 10, durationDays: 365 },
 ];
 
 const getPlans = catchAsync(async (req, res) => {

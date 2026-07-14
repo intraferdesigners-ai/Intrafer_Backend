@@ -20,8 +20,7 @@ const SETTINGS_DEFAULTS = {
   popup_retry_minutes: 1,
   maintenance_mode: false,
   allow_new_registrations: true,
-  max_leads_per_vendor_basic: 5,
-  max_leads_per_vendor_pro: 15,
+  max_leads_per_vendor: 10,
 };
 
 const getVendors = catchAsync(async (req, res) => {
