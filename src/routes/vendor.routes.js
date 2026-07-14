@@ -1,7 +1,7 @@
 const express = require('express');
 const {
   getProfile, updateProfile,
-  createProject, getProjects, updateProject, deleteProject, reorderProjects,
+  createProject, getProjects, getProjectById, updateProject, deleteProject, reorderProjects,
   getAnalytics,
 } = require('../controllers/vendor.controller');
 const { protect } = require('../middleware/auth');
@@ -19,8 +19,9 @@ router.put('/profile',         ...isVendor, ...updateProfileRules, validate, upd
 // reorder MUST be before /:id to avoid route conflict
 router.put('/projects/reorder', ...isVendor, reorderProjects);
 router.get('/projects',        ...isVendor, getProjects);
+router.get('/projects/:id',    ...isVendor, getProjectById);
 router.post('/projects',       ...isVendor, (req, res, next) => { req.uploadFolder = 'projects'; next(); }, upload.array('images', 10), createProject);
-router.put('/projects/:id',    ...isVendor, updateProject);
+router.put('/projects/:id',    ...isVendor, (req, res, next) => { req.uploadFolder = 'projects'; next(); }, upload.array('images', 10), updateProject);
 router.delete('/projects/:id', ...isVendor, deleteProject);
 router.get('/analytics',       ...isVendor, getAnalytics);
 

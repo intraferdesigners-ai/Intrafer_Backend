@@ -61,13 +61,38 @@ const getProjects = catchAsync(async (req, res) => {
   return success(res, { projects });
 });
 
+const getProjectById = catchAsync(async (req, res) => {
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+
+  const project = await Project.findOne({ _id: req.params.id, vendorId: vendor._id });
+  if (!project) return error(res, 'Project not found.', 404);
+
+  return success(res, { project });
+});
+
 const updateProject = catchAsync(async (req, res) => {
   const vendor = await Vendor.findOne({ userId: req.user._id });
   if (!vendor) return error(res, 'Vendor profile not found.', 404);
 
+  // existingImages is only sent by the edit form (as a JSON array of retained
+  // image URLs) — plain field updates (e.g. the publish toggle) omit it and
+  // leave `images`/`beforeImage`/`afterImage` untouched.
+  const { existingImages, beforeImageIndex, afterImageIndex, ...rest } = req.body;
+  const updates = { ...rest };
+
+  if (existingImages !== undefined) {
+    const kept = JSON.parse(existingImages);
+    const newImages = req.files ? req.files.map((f) => getFileUrl(f)) : [];
+    updates.images = [...kept, ...newImages];
+
+    if (beforeImageIndex !== undefined) updates.beforeImage = newImages[parseInt(beforeImageIndex, 10)] || '';
+    if (afterImageIndex  !== undefined) updates.afterImage  = newImages[parseInt(afterImageIndex, 10)]  || '';
+  }
+
   const project = await Project.findOneAndUpdate(
     { _id: req.params.id, vendorId: vendor._id },
-    req.body,
+    updates,
     { new: true, runValidators: true }
   );
 
@@ -153,6 +178,6 @@ const updateNotes = catchAsync(async (req, res) => {
 
 module.exports = {
   getProfile, updateProfile,
-  createProject, getProjects, updateProject, deleteProject, reorderProjects,
+  createProject, getProjects, getProjectById, updateProject, deleteProject, reorderProjects,
   getAnalytics, updateNotes,
 };
