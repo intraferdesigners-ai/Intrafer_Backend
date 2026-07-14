@@ -2,8 +2,8 @@ const { body } = require('express-validator');
 
 const createLeadRules = [
   body('vendorId').isMongoId().withMessage('Valid vendorId is required'),
-  body('projectType').trim().notEmpty().withMessage('Project type is required'),
-  body('budget').trim().notEmpty().withMessage('Budget range is required'),
+  body('projectType').optional().trim(),
+  body('budget').optional().trim(),
   body('city').trim().notEmpty().withMessage('City is required'),
   body('requirements').optional().trim(),
 ];

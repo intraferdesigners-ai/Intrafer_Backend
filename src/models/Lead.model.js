@@ -15,8 +15,8 @@ const leadSchema = new mongoose.Schema(
     enquiryId: { type: String, required: true, unique: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
-    projectType: { type: String, required: true },
-    budget: { type: String, required: true },
+    projectType: { type: String, default: '' },
+    budget: { type: String, default: '' },
     city: { type: String, required: true },
     requirements: { type: String, default: '' },
     status: {
