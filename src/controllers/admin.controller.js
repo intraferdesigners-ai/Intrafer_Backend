@@ -8,6 +8,7 @@ const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
 const { sendVendorApprovedEmail, sendVendorRejectedEmail } = require('../services/email.service');
+const { PERMISSION_KEYS } = require('../constants/permissions');
 
 const SETTINGS_DEFAULTS = {
   site_name: 'Intrafer',
@@ -253,6 +254,96 @@ const updateSettings = catchAsync(async (req, res) => {
   return success(res, {}, 'Settings saved successfully.');
 });
 
+// Admin staff management — all three handlers are gated on req.user.isSuperAdmin
+// directly (see admin.routes.js), NOT via requirePermission/adminPermissions,
+// since granting that ability through a regular permission flag would let a
+// non-super-admin escalate their own or others' privileges.
+
+const getAdminUsers = catchAsync(async (req, res) => {
+  const admins = await User.find({ role: 'admin' })
+    .select('name email phone isSuperAdmin adminPermissions createdAt')
+    .sort({ createdAt: -1 });
+  return success(res, { admins });
+});
+
+const createAdminUser = catchAsync(async (req, res) => {
+  const { name, email, phone, password, adminPermissions, isSuperAdmin } = req.body;
+
+  if (!name || !email || !phone || !password) {
+    return error(res, 'name, email, phone, and password are required.', 400);
+  }
+
+  const existing = await User.findOne({ $or: [{ email }, { phone }] });
+  if (existing) return error(res, 'Email or phone already registered.', 409);
+
+  const permissions = Array.isArray(adminPermissions)
+    ? adminPermissions.filter((p) => PERMISSION_KEYS.includes(p))
+    : [];
+
+  const admin = await User.create({
+    name,
+    email,
+    phone,
+    passwordHash: password,
+    role: 'admin',
+    isEmailVerified: true,
+    isPhoneVerified: true,
+    isSuperAdmin: !!isSuperAdmin,
+    adminPermissions: permissions,
+  });
+
+  return success(res, {
+    admin: {
+      id: admin._id,
+      name: admin.name,
+      email: admin.email,
+      phone: admin.phone,
+      isSuperAdmin: admin.isSuperAdmin,
+      adminPermissions: admin.adminPermissions,
+      createdAt: admin.createdAt,
+    },
+  }, 'Admin user created.', 201);
+});
+
+const updateAdminPermissions = catchAsync(async (req, res) => {
+  const { adminPermissions, isSuperAdmin } = req.body;
+
+  const target = await User.findOne({ _id: req.params.id, role: 'admin' });
+  if (!target) return error(res, 'Admin user not found.', 404);
+
+  // Don't allow a super admin to demote themselves if they're the last one —
+  // otherwise the platform could lock everyone out of admin-user management.
+  if (target._id.equals(req.user._id) && target.isSuperAdmin && isSuperAdmin === false) {
+    const otherSuperAdmins = await User.countDocuments({
+      role: 'admin', isSuperAdmin: true, _id: { $ne: target._id },
+    });
+    if (otherSuperAdmins === 0) {
+      return error(res, 'You are the last super admin — promote another admin before demoting yourself.', 400);
+    }
+  }
+
+  if (adminPermissions !== undefined) {
+    target.adminPermissions = Array.isArray(adminPermissions)
+      ? adminPermissions.filter((p) => PERMISSION_KEYS.includes(p))
+      : [];
+  }
+  if (isSuperAdmin !== undefined) target.isSuperAdmin = !!isSuperAdmin;
+
+  await target.save();
+
+  return success(res, {
+    admin: {
+      id: target._id,
+      name: target.name,
+      email: target.email,
+      phone: target.phone,
+      isSuperAdmin: target.isSuperAdmin,
+      adminPermissions: target.adminPermissions,
+      createdAt: target.createdAt,
+    },
+  }, 'Admin permissions updated.');
+});
+
 module.exports = {
   getVendors,
   approveVendor,
@@ -267,4 +358,7 @@ module.exports = {
   changePassword,
   getSettings,
   updateSettings,
+  getAdminUsers,
+  createAdminUser,
+  updateAdminPermissions,
 };

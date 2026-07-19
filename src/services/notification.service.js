@@ -1,4 +1,5 @@
 const Notification = require('../models/Notification.model');
+const User = require('../models/User.model');
 const emailService = require('./email.service');
 const whatsappService = require('./whatsapp.service');
 
@@ -39,6 +40,57 @@ const handlers = {
       title: 'Vendor Accepted Your Enquiry',
       message: `${vendor.businessName} has accepted your enquiry ${lead.enquiryId} and will contact you shortly.`,
       channels: ['in_app', 'email'],
+    });
+  },
+
+  APPOINTMENT_CONFIRMED: async ({ user, vendor, lead }) => {
+    const formattedDateTime = new Date(lead.confirmedDateTime).toLocaleString('en-IN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+
+    await Notification.create({
+      recipientId: user._id,
+      recipientRole: 'user',
+      type: 'appointment_confirmed',
+      title: 'Consultation Appointment Confirmed',
+      message: `${vendor.businessName} confirmed your consultation for ${formattedDateTime}.`,
+      channels: ['in_app', 'email'],
+      metadata: { leadId: lead._id },
+    });
+  },
+
+  NEW_MESSAGE: async ({ recipientId, recipientRole, senderName, lead }) => {
+    await Notification.create({
+      recipientId,
+      recipientRole,
+      type: 'new_message',
+      title: 'New Message',
+      message: `${senderName} sent you a message about enquiry ${lead.enquiryId}.`,
+      channels: ['in_app'],
+      metadata: { leadId: lead._id },
+    });
+  },
+
+  SUPPORT_TICKET_CREATED: async ({ ticket }) => {
+    const admins = await User.find({ role: 'admin' }).select('_id');
+    await Promise.all(admins.map((admin) =>
+      Notification.create({
+        recipientId: admin._id,
+        recipientRole: 'admin',
+        type: 'support_ticket_created',
+        title: 'New Support Ticket',
+        message: `${ticket.name} submitted a ticket: "${ticket.subject}".`,
+        channels: ['in_app'],
+        metadata: { ticketId: ticket._id },
+      })
+    ));
+
+    await emailService.sendSupportTicketConfirmationEmail({
+      to: ticket.email,
+      name: ticket.name,
+      subject: ticket.subject,
+      message: ticket.message,
     });
   },
 

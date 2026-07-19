@@ -9,7 +9,7 @@ const notifService = require('../services/notification.service');
 const CONTACT_REVEALED_STATUSES = ['accepted', 'contacted', 'quotation_sent', 'won', 'lost'];
 
 const createLead = catchAsync(async (req, res) => {
-  const { vendorId, projectType, budget, city, requirements } = req.body;
+  const { vendorId, projectType, budget, city, requirements, isConsultation, preferredDate } = req.body;
 
   if (req.user?.isBlocked) {
     return error(res, 'Your account has been suspended. Contact support@intrafer.in', 403);
@@ -26,6 +26,8 @@ const createLead = catchAsync(async (req, res) => {
     budget,
     city,
     requirements,
+    isConsultation: !!isConsultation,
+    preferredDate: preferredDate || '',
     statusHistory: [{ status: 'new', changedBy: req.user._id }],
   });
 
@@ -97,6 +99,35 @@ const acceptLead = catchAsync(async (req, res) => {
   return success(res, { lead }, 'Lead accepted. Contact details are now visible.');
 });
 
+const confirmAppointment = catchAsync(async (req, res) => {
+  const { dateTime } = req.body;
+  if (!dateTime) return error(res, 'dateTime is required.', 400);
+
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+
+  const lead = await Lead.findOne({ _id: req.params.id, vendorId: vendor._id, isConsultation: true });
+  if (!lead) return error(res, 'Consultation lead not found.', 404);
+
+  lead.confirmedDateTime = new Date(dateTime);
+  if (lead.status === 'new') {
+    lead.status = 'accepted';
+    lead.contactRevealedAt = new Date();
+  }
+  lead.statusHistory.push({
+    status: lead.status,
+    changedBy: req.user._id,
+    note: `Appointment confirmed for ${lead.confirmedDateTime.toISOString()}`,
+  });
+  await lead.save();
+
+  await lead.populate('userId', 'name email phone');
+
+  notifService.dispatch('APPOINTMENT_CONFIRMED', { user: lead.userId, vendor, lead });
+
+  return success(res, { lead }, 'Appointment confirmed.');
+});
+
 const updateLeadStatus = catchAsync(async (req, res) => {
   const { status } = req.body;
 
@@ -133,4 +164,7 @@ const cancelLead = catchAsync(async (req, res) => {
   return success(res, { lead }, 'Enquiry cancelled.');
 });
 
-module.exports = { createLead, getUserLeads, getVendorLeads, getLeadById, acceptLead, updateLeadStatus, cancelLead };
+module.exports = {
+  createLead, getUserLeads, getVendorLeads, getLeadById, acceptLead, confirmAppointment, updateLeadStatus, cancelLead,
+  CONTACT_REVEALED_STATUSES,
+};

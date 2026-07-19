@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User.model');
 const Vendor = require('../models/Vendor.model');
 const catchAsync = require('../utils/catchAsync');
@@ -50,9 +51,15 @@ const login = catchAsync(async (req, res) => {
 
   setRefreshCookie(res, refreshToken);
 
+  const userPayload = { id: user._id, name: user.name, email: user.email, role: user.role };
+  if (user.role === 'admin') {
+    userPayload.isSuperAdmin = user.isSuperAdmin;
+    userPayload.adminPermissions = user.adminPermissions;
+  }
+
   return success(res, {
     accessToken,
-    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    user: userPayload,
   });
 });
 
@@ -115,7 +122,14 @@ const logout = catchAsync(async (req, res) => {
 const getMe = catchAsync(async (req, res) => {
   const user = await User.findById(req.user._id).select('-passwordHash -refreshToken');
   if (!user) return error(res, 'User not found.', 404);
-  return success(res, { user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role } });
+
+  const userPayload = { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role };
+  if (user.role === 'admin') {
+    userPayload.isSuperAdmin = user.isSuperAdmin;
+    userPayload.adminPermissions = user.adminPermissions;
+  }
+
+  return success(res, { user: userPayload });
 });
 
 const updateProfile = catchAsync(async (req, res) => {
@@ -131,17 +145,69 @@ const updateProfile = catchAsync(async (req, res) => {
   return success(res, { user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role } }, 'Profile updated.');
 });
 
+const RESET_TOKEN_EXPIRY_MINUTES = 30;
+
 const forgotPassword = catchAsync(async (req, res) => {
   const { email } = req.body;
 
   const user = await User.findOne({ email: email?.toLowerCase() });
   if (user) {
-    // TODO: generate reset token, save to DB, send via email once Resend is configured
-    console.log(`[ForgotPassword] Reset requested for: ${email}`);
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    user.passwordResetToken = hashedToken;
+    user.passwordResetExpires = new Date(Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000);
+    await user.save({ validateBeforeSave: false });
+
+    const resetUrl = `${process.env.CLIENT_URL}/auth/reset-password?token=${rawToken}`;
+    emailService.sendPasswordResetEmail({ to: user.email, name: user.name, resetUrl }).catch((err) =>
+      console.error('[ForgotPassword] Email send failed:', err.message)
+    );
   }
 
   // Always return success — don't reveal whether the email is registered
   return success(res, {}, 'If this email is registered, you will receive a reset link shortly.');
 });
 
-module.exports = { register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, forgotPassword };
+const resetPassword = catchAsync(async (req, res) => {
+  const { token, password } = req.body;
+  if (!token) return error(res, 'Reset token is required.', 400);
+
+  const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+  const user = await User.findOne({
+    passwordResetToken: hashedToken,
+    passwordResetExpires: { $gt: new Date() },
+  }).select('+passwordResetToken +passwordResetExpires');
+
+  if (!user) return error(res, 'This reset link is invalid or has expired. Please request a new one.', 400);
+
+  user.passwordHash = password;
+  user.passwordResetToken = undefined;
+  user.passwordResetExpires = undefined;
+  user.refreshToken = undefined; // force re-login on all devices
+  await user.save();
+
+  return success(res, {}, 'Password reset successfully. Please sign in with your new password.');
+});
+
+const SAVED_VENDOR_FIELDS = 'businessName location specializations portfolioImages profilePhoto rating reviewCount isApproved isFeatured';
+
+const getSavedVendors = catchAsync(async (req, res) => {
+  const user = await User.findById(req.user._id).populate('savedVendors', SAVED_VENDOR_FIELDS);
+  return success(res, { vendors: user.savedVendors });
+});
+
+const saveVendor = catchAsync(async (req, res) => {
+  const { vendorId } = req.params;
+  await User.findByIdAndUpdate(req.user._id, { $addToSet: { savedVendors: vendorId } });
+  return success(res, {}, 'Vendor saved.');
+});
+
+const unsaveVendor = catchAsync(async (req, res) => {
+  const { vendorId } = req.params;
+  await User.findByIdAndUpdate(req.user._id, { $pull: { savedVendors: vendorId } });
+  return success(res, {}, 'Vendor removed from saved list.');
+});
+
+module.exports = { register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, forgotPassword, resetPassword, getSavedVendors, saveVendor, unsaveVendor };

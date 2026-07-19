@@ -9,6 +9,9 @@ const notificationSchema = new mongoose.Schema(
       enum: [
         'lead_assigned',
         'lead_accepted',
+        'appointment_confirmed',
+        'new_message',
+        'support_ticket_created',
         'enquiry_created',
         'payment_success',
         'subscription_expiring',

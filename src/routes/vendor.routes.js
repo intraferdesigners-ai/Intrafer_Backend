@@ -1,6 +1,6 @@
 const express = require('express');
 const {
-  getProfile, updateProfile,
+  getProfile, updateProfile, updateAvailability,
   createProject, getProjects, getProjectById, updateProject, deleteProject, reorderProjects,
   getAnalytics,
 } = require('../controllers/vendor.controller');
@@ -16,6 +16,7 @@ const isVendor = [protect, rbac('vendor')];
 
 router.get('/profile',         ...isVendor, getProfile);
 router.put('/profile',         ...isVendor, ...updateProfileRules, validate, updateProfile);
+router.put('/availability',    ...isVendor, updateAvailability);
 // reorder MUST be before /:id to avoid route conflict
 router.put('/projects/reorder', ...isVendor, reorderProjects);
 router.get('/projects',        ...isVendor, getProjects);

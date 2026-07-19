@@ -1,11 +1,22 @@
 const mongoose = require('mongoose');
 
+const serviceSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    description: { type: String, default: '' },
+    startingPrice: { type: Number },
+    priceUnit: { type: String, enum: ['flat', 'per_sqft', 'per_room'], default: 'flat' },
+  },
+  { _id: false }
+);
+
 const vendorSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     businessName: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
     specializations: [{ type: String }],
+    services: [serviceSchema],
     location: {
       city: { type: String, default: '' },
       state: { type: String, default: '' },
@@ -25,6 +36,12 @@ const vendorSchema = new mongoose.Schema(
     totalLeads: { type: Number, default: 0 },
     wonLeads:     { type: Number, default: 0 },
     profileViews: { type: Number, default: 0 },
+    availability: {
+      workingDays: [{ type: String, enum: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] }],
+      startTime: { type: String, default: '10:00' },
+      endTime: { type: String, default: '18:00' },
+      slotDurationMinutes: { type: Number, default: 60 },
+    },
   },
   { timestamps: true }
 );

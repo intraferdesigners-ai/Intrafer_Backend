@@ -20,4 +20,9 @@ const otpRules = [
     .isNumeric().withMessage('OTP must be 6 digits'),
 ];
 
-module.exports = { registerRules, loginRules, otpRules };
+const resetPasswordRules = [
+  body('token').trim().notEmpty().withMessage('Reset token is required'),
+  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+];
+
+module.exports = { registerRules, loginRules, otpRules, resetPasswordRules };

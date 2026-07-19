@@ -7,6 +7,7 @@ const cookieParser = require('cookie-parser');
 const { globalLimiter } = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
 
+const { handleWebhook } = require('./controllers/subscription.controller');
 const authRoutes         = require('./routes/auth.routes');
 const publicRoutes       = require('./routes/public.routes');
 const leadRoutes         = require('./routes/lead.routes');
@@ -17,6 +18,7 @@ const uploadRoutes       = require('./routes/upload.routes');
 const adminRoutes        = require('./routes/admin.routes');
 const reviewRoutes       = require('./routes/review.routes');
 const visitorRoutes      = require('./routes/visitor.routes');
+const newsletterRoutes   = require('./routes/newsletter.routes');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -46,6 +48,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(globalLimiter);
+
+// Registered BEFORE express.json() so the exact raw request bytes are available
+// for Razorpay's HMAC webhook signature verification (see subscription.controller.js).
+app.post('/api/subscriptions/webhook', express.raw({ type: 'application/json' }), handleWebhook);
+
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
@@ -78,6 +85,7 @@ app.use('/api/upload',        uploadRoutes);
 app.use('/api/admin',         adminRoutes);
 app.use('/api/reviews',       reviewRoutes);
 app.use('/api/visitor',       visitorRoutes);
+app.use('/api/newsletter',    newsletterRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.method} ${req.originalUrl} not found` });

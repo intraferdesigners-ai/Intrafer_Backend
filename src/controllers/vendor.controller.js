@@ -13,12 +13,17 @@ const getProfile = catchAsync(async (req, res) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-  const { businessName, description, specializations, location } = req.body;
+  const { businessName, description, specializations, services, location, profilePhoto } = req.body;
   const updates = {};
   if (businessName !== undefined) updates.businessName = businessName;
   if (description !== undefined) updates.description = description;
   if (specializations !== undefined) updates.specializations = specializations;
+  if (services !== undefined) updates.services = services;
   if (location !== undefined) updates.location = location;
+  // profilePhoto is a URL string returned by POST /api/upload/avatar, uploaded
+  // separately as multipart form data — the frontend uploads the file first,
+  // then PUTs the resulting URL here alongside the rest of the profile.
+  if (profilePhoto !== undefined) updates.profilePhoto = profilePhoto;
 
   const vendor = await Vendor.findOneAndUpdate(
     { userId: req.user._id },
@@ -162,6 +167,24 @@ const getAnalytics = catchAsync(async (req, res) => {
   });
 });
 
+const updateAvailability = catchAsync(async (req, res) => {
+  const { workingDays, startTime, endTime, slotDurationMinutes } = req.body;
+  const availability = {};
+  if (workingDays !== undefined) availability.workingDays = workingDays;
+  if (startTime !== undefined) availability.startTime = startTime;
+  if (endTime !== undefined) availability.endTime = endTime;
+  if (slotDurationMinutes !== undefined) availability.slotDurationMinutes = slotDurationMinutes;
+
+  const vendor = await Vendor.findOneAndUpdate(
+    { userId: req.user._id },
+    { availability },
+    { new: true, runValidators: true }
+  );
+
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+  return success(res, { vendor }, 'Availability updated.');
+});
+
 const updateNotes = catchAsync(async (req, res) => {
   const { notes } = req.body;
   const lead = await Lead.findById(req.params.id);
@@ -177,7 +200,7 @@ const updateNotes = catchAsync(async (req, res) => {
 });
 
 module.exports = {
-  getProfile, updateProfile,
+  getProfile, updateProfile, updateAvailability,
   createProject, getProjects, getProjectById, updateProject, deleteProject, reorderProjects,
   getAnalytics, updateNotes,
 };

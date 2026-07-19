@@ -10,11 +10,14 @@ const subscriptionSchema = new mongoose.Schema(
     razorpayPaymentId: { type: String },
     status: {
       type: String,
-      enum: ['pending', 'active', 'expired', 'cancelled'],
+      enum: ['pending', 'active', 'expired', 'cancelled', 'failed'],
       default: 'pending',
     },
     startDate: { type: Date },
     endDate: { type: Date },
+    invoiceNumber: { type: String, unique: true, sparse: true },
+    couponCode: { type: String, default: '' },
+    discountAmount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

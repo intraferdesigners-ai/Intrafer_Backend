@@ -2,7 +2,13 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+const USE_CLOUDINARY =
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET;
+
 const USE_S3 =
+  !USE_CLOUDINARY &&
   process.env.AWS_ACCESS_KEY_ID &&
   process.env.AWS_SECRET_ACCESS_KEY &&
   process.env.AWS_S3_BUCKET;
@@ -10,7 +16,27 @@ const USE_S3 =
 let storage;
 let getFileUrl;
 
-if (USE_S3) {
+if (USE_CLOUDINARY) {
+  const cloudinary = require('cloudinary').v2;
+  const { CloudinaryStorage } = require('multer-storage-cloudinary');
+
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+
+  storage = new CloudinaryStorage({
+    cloudinary,
+    params: (req, file) => ({
+      folder: req.uploadFolder || 'projects',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: [{ width: 2000, height: 2000, crop: 'limit' }],
+    }),
+  });
+
+  getFileUrl = (file) => file.path;
+} else if (USE_S3) {
   const multerS3 = require('multer-s3');
   const { S3Client } = require('@aws-sdk/client-s3');
 

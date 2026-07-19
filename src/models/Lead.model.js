@@ -27,6 +27,9 @@ const leadSchema = new mongoose.Schema(
     contactRevealedAt: { type: Date },
     statusHistory: [statusHistorySchema],
     vendorNotes: { type: String, default: '' },
+    isConsultation: { type: Boolean, default: false },
+    preferredDate: { type: String, default: '' },
+    confirmedDateTime: { type: Date, default: null },
   },
   { timestamps: true }
 );
