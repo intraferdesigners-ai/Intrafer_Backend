@@ -1,6 +1,7 @@
 const Vendor = require('../models/Vendor.model');
 const Project = require('../models/Project.model');
 const Lead = require('../models/Lead.model');
+const Settings = require('../models/Settings.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
@@ -68,6 +69,7 @@ const getVendorProjects = catchAsync(async (req, res) => {
   const projects = await Project.find({
     vendorId: req.params.id,
     isPublished: true,
+    moderationStatus: 'approved',
   }).sort({ createdAt: -1 });
 
   return success(res, { projects });
@@ -77,6 +79,7 @@ const getProjectById = catchAsync(async (req, res) => {
   const project = await Project.findOne({
     _id: req.params.id,
     isPublished: true,
+    moderationStatus: 'approved',
   }).populate('vendorId', 'businessName location rating reviewCount profilePhoto isApproved');
 
   if (!project) return error(res, 'Project not found.', 404);
@@ -163,7 +166,7 @@ const getAvailableSlots = catchAsync(async (req, res) => {
 const getGallery = catchAsync(async (req, res) => {
   const { room, style } = req.query;
 
-  const filter = { isPublished: true };
+  const filter = { isPublished: true, moderationStatus: 'approved' };
   if (room) filter.projectType = { $regex: new RegExp(room, 'i') };
   if (style) filter.style = { $regex: new RegExp(style, 'i') };
 
@@ -178,7 +181,7 @@ const getGallery = catchAsync(async (req, res) => {
 const getStats = catchAsync(async (req, res) => {
   const [vendorCount, projectCount, enquiryCount, ratingAgg, featuredCount] = await Promise.all([
     Vendor.countDocuments({ isApproved: true, isListingEnabled: true }),
-    Project.countDocuments({ isPublished: true }),
+    Project.countDocuments({ isPublished: true, moderationStatus: 'approved' }),
     Lead.countDocuments(),
     Vendor.aggregate([
       { $match: { isApproved: true, isListingEnabled: true } },
@@ -192,4 +195,68 @@ const getStats = catchAsync(async (req, res) => {
   return success(res, { vendorCount, projectCount, enquiryCount, avgRating, featuredCount });
 });
 
-module.exports = { getVendors, getVendorById, getVendorsByIds, getVendorProjects, getProjectById, getSimilarVendors, getAvailableSlots, getGallery, getStats };
+const getFeaturedProjects = catchAsync(async (req, res) => {
+  const featured = await Project.find({ isFeatured: true, isPublished: true, moderationStatus: 'approved' })
+    .populate('vendorId', 'businessName')
+    .sort({ createdAt: -1 })
+    .limit(8);
+
+  let projects = featured;
+  if (projects.length < 4) {
+    const excludeIds = projects.map((p) => p._id);
+    const fillers = await Project.find({
+      _id: { $nin: excludeIds },
+      isPublished: true,
+      moderationStatus: 'approved',
+    })
+      .populate('vendorId', 'businessName')
+      .sort({ createdAt: -1 })
+      .limit(8 - projects.length);
+    projects = [...projects, ...fillers];
+  }
+
+  return success(res, { projects });
+});
+
+const getRelatedProjects = catchAsync(async (req, res) => {
+  const current = await Project.findById(req.params.id);
+  if (!current) return error(res, 'Project not found.', 404);
+
+  const sameType = await Project.find({
+    _id: { $ne: current._id },
+    projectType: current.projectType,
+    isPublished: true,
+    moderationStatus: 'approved',
+  })
+    .populate('vendorId', 'businessName')
+    .sort({ createdAt: -1 })
+    .limit(4);
+
+  let projects = sameType;
+  if (projects.length < 4) {
+    const excludeIds = [current._id, ...projects.map((p) => p._id)];
+    const fillers = await Project.find({
+      _id: { $nin: excludeIds },
+      isPublished: true,
+      moderationStatus: 'approved',
+    })
+      .populate('vendorId', 'businessName')
+      .sort({ createdAt: -1 })
+      .limit(4 - projects.length);
+    projects = [...projects, ...fillers];
+  }
+
+  return success(res, { projects });
+});
+
+// Kept in sync with SETTINGS_DEFAULTS.homepage_hero_subtitle in
+// admin.controller.js — this is the copy that ships until an admin saves
+// their own via the CMS page, so the homepage never renders blank.
+const DEFAULT_HERO_SUBTITLE = "India's most trusted interior designer marketplace. Browse verified portfolios, compare quotes, and connect with the perfect designer for your home.";
+
+const getHomepageContent = catchAsync(async (req, res) => {
+  const doc = await Settings.findOne({ key: 'homepage_hero_subtitle' });
+  return success(res, { heroSubtitle: doc?.value ?? DEFAULT_HERO_SUBTITLE });
+});
+
+module.exports = { getVendors, getVendorById, getVendorsByIds, getVendorProjects, getProjectById, getSimilarVendors, getAvailableSlots, getGallery, getStats, getFeaturedProjects, getRelatedProjects, getHomepageContent };

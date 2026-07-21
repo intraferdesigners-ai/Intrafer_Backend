@@ -52,6 +52,7 @@ const login = catchAsync(async (req, res) => {
   setRefreshCookie(res, refreshToken);
 
   const userPayload = { id: user._id, name: user.name, email: user.email, role: user.role };
+  userPayload.emailNotifications = user.emailNotifications;
   if (user.role === 'admin') {
     userPayload.isSuperAdmin = user.isSuperAdmin;
     userPayload.adminPermissions = user.adminPermissions;
@@ -124,6 +125,7 @@ const getMe = catchAsync(async (req, res) => {
   if (!user) return error(res, 'User not found.', 404);
 
   const userPayload = { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role };
+  userPayload.emailNotifications = user.emailNotifications;
   if (user.role === 'admin') {
     userPayload.isSuperAdmin = user.isSuperAdmin;
     userPayload.adminPermissions = user.adminPermissions;
@@ -133,16 +135,55 @@ const getMe = catchAsync(async (req, res) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-  const { name, phone } = req.body;
-  if (!name?.trim()) return error(res, 'Name is required.', 400);
+  const { name, phone, emailNotifications } = req.body;
+
+  // name/phone stay optional here (rather than name being required) so a
+  // partial payload — e.g. the Settings page's { emailNotifications } toggle,
+  // which doesn't resend name/phone — doesn't get rejected. When name IS
+  // sent, it still can't be blanked out.
+  const updates = {};
+  if (name !== undefined) {
+    if (!name.trim()) return error(res, 'Name is required.', 400);
+    updates.name = name.trim();
+  }
+  if (phone) updates.phone = phone.trim();
+  if (emailNotifications !== undefined) updates.emailNotifications = Boolean(emailNotifications);
 
   const user = await User.findByIdAndUpdate(
     req.user._id,
-    { name: name.trim(), ...(phone ? { phone: phone.trim() } : {}) },
+    updates,
     { new: true, runValidators: true }
   ).select('-passwordHash -refreshToken');
 
-  return success(res, { user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role } }, 'Profile updated.');
+  return success(res, {
+    user: {
+      id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role,
+      emailNotifications: user.emailNotifications,
+    },
+  }, 'Profile updated.');
+});
+
+// Matches the minimum enforced by registerRules/resetPasswordRules in
+// validators/auth.validator.js — keep in sync with that file.
+const MIN_PASSWORD_LENGTH = 8;
+
+const changePassword = catchAsync(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return error(res, 'Current password and new password are required.', 400);
+  }
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    return error(res, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`, 400);
+  }
+
+  const user = await User.findById(req.user._id);
+  const passwordMatch = await user.comparePassword(currentPassword);
+  if (!passwordMatch) return error(res, 'Current password is incorrect.', 401);
+
+  user.passwordHash = newPassword;
+  await user.save();
+
+  return success(res, {}, 'Password changed successfully.');
 });
 
 const RESET_TOKEN_EXPIRY_MINUTES = 30;
@@ -210,4 +251,4 @@ const unsaveVendor = catchAsync(async (req, res) => {
   return success(res, {}, 'Vendor removed from saved list.');
 });
 
-module.exports = { register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, forgotPassword, resetPassword, getSavedVendors, saveVendor, unsaveVendor };
+module.exports = { register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, changePassword, forgotPassword, resetPassword, getSavedVendors, saveVendor, unsaveVendor };

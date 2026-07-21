@@ -4,6 +4,8 @@ const Lead = require('../models/Lead.model');
 const Subscription = require('../models/Subscription.model');
 const Notification = require('../models/Notification.model');
 const Settings = require('../models/Settings.model');
+const AuditLog = require('../models/AuditLog.model');
+const Project = require('../models/Project.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
@@ -22,6 +24,7 @@ const SETTINGS_DEFAULTS = {
   maintenance_mode: false,
   allow_new_registrations: true,
   max_leads_per_vendor: 10,
+  homepage_hero_subtitle: "India's most trusted interior designer marketplace. Browse verified portfolios, compare quotes, and connect with the perfect designer for your home.",
 };
 
 const getVendors = catchAsync(async (req, res) => {
@@ -344,6 +347,223 @@ const updateAdminPermissions = catchAsync(async (req, res) => {
   }, 'Admin permissions updated.');
 });
 
+const getAuditLogs = catchAsync(async (req, res) => {
+  const total = await AuditLog.countDocuments();
+  const { skip, limit, page, totalPages } = paginate(req.query, total);
+
+  const logs = await AuditLog.find()
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  return success(res, { logs, total, page, totalPages });
+});
+
+// Shared by getRevenueReport/exportRevenueReport — defaults to the last 12
+// months when `from`/`to` aren't given, and extends `to` through the end of
+// its calendar day so a same-day range isn't emptied by the time component.
+const parseRevenueRange = (query) => {
+  const now = new Date();
+  const defaultFrom = new Date(now);
+  defaultFrom.setMonth(defaultFrom.getMonth() - 12);
+
+  const from = query.from ? new Date(query.from) : defaultFrom;
+
+  let to;
+  if (query.to) {
+    to = new Date(query.to);
+    to.setHours(23, 59, 59, 999);
+  } else {
+    to = now;
+  }
+
+  return { from, to };
+};
+
+const getRevenueReport = catchAsync(async (req, res) => {
+  const { from, to } = parseRevenueRange(req.query);
+  const match = { status: { $in: ['active', 'expired'] }, startDate: { $gte: from, $lte: to } };
+
+  const [summaryResult, monthly, byPlan, topCoupons] = await Promise.all([
+    Subscription.aggregate([
+      { $match: match },
+      { $group: {
+        _id: null,
+        grossRevenue: { $sum: '$planPrice' },
+        totalDiscounts: { $sum: '$discountAmount' },
+        transactionCount: { $sum: 1 },
+      }},
+    ]),
+    Subscription.aggregate([
+      { $match: match },
+      { $group: {
+        _id: { year: { $year: '$startDate' }, month: { $month: '$startDate' } },
+        grossRevenue: { $sum: '$planPrice' },
+        netRevenue: { $sum: { $subtract: ['$planPrice', { $ifNull: ['$discountAmount', 0] }] } },
+        transactionCount: { $sum: 1 },
+      }},
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+      { $project: {
+        _id: 0, year: '$_id.year', month: '$_id.month',
+        grossRevenue: 1, netRevenue: 1, transactionCount: 1,
+      }},
+    ]),
+    Subscription.aggregate([
+      { $match: match },
+      { $group: {
+        _id: '$planName',
+        transactionCount: { $sum: 1 },
+        grossRevenue: { $sum: '$planPrice' },
+        netRevenue: { $sum: { $subtract: ['$planPrice', { $ifNull: ['$discountAmount', 0] }] } },
+      }},
+      { $project: { _id: 0, planName: '$_id', transactionCount: 1, grossRevenue: 1, netRevenue: 1 } },
+    ]),
+    Subscription.aggregate([
+      { $match: { ...match, couponCode: { $nin: ['', null] } } },
+      { $group: {
+        _id: '$couponCode',
+        useCount: { $sum: 1 },
+        totalDiscountGiven: { $sum: '$discountAmount' },
+      }},
+      { $sort: { useCount: -1 } },
+      { $limit: 10 },
+      { $project: { _id: 0, couponCode: '$_id', useCount: 1, totalDiscountGiven: 1 } },
+    ]),
+  ]);
+
+  const grossRevenue = summaryResult[0]?.grossRevenue ?? 0;
+  const totalDiscounts = summaryResult[0]?.totalDiscounts ?? 0;
+
+  return success(res, {
+    summary: {
+      grossRevenue,
+      totalDiscounts,
+      netRevenue: grossRevenue - totalDiscounts,
+      transactionCount: summaryResult[0]?.transactionCount ?? 0,
+    },
+    monthly,
+    byPlan,
+    topCoupons,
+  });
+});
+
+const escapeCsvField = (value) => {
+  const str = String(value ?? '');
+  return str.includes(',') ? `"${str.replace(/"/g, '""')}"` : str;
+};
+
+const exportRevenueReport = catchAsync(async (req, res) => {
+  const { from, to } = parseRevenueRange(req.query);
+
+  const subscriptions = await Subscription.find({
+    status: { $in: ['active', 'expired'] },
+    startDate: { $gte: from, $lte: to },
+  })
+    .populate('vendorId', 'businessName')
+    .sort({ startDate: 1 });
+
+  const header = ['Date', 'Vendor', 'Plan', 'Gross Amount', 'Discount', 'Net Amount', 'Coupon Code', 'Status'];
+  const rows = subscriptions.map((sub) => [
+    sub.startDate ? sub.startDate.toISOString().slice(0, 10) : '',
+    sub.vendorId?.businessName || '',
+    sub.planName,
+    sub.planPrice,
+    sub.discountAmount || 0,
+    (sub.planPrice || 0) - (sub.discountAmount || 0),
+    sub.couponCode || '',
+    sub.status,
+  ].map(escapeCsvField).join(','));
+
+  const csv = [header.join(','), ...rows].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="revenue-report.csv"');
+  res.send(csv);
+});
+
+const getPendingProjects = catchAsync(async (req, res) => {
+  const filter = { moderationStatus: 'pending' };
+  const total = await Project.countDocuments(filter);
+  const { skip, limit, page, totalPages } = paginate(req.query, total);
+
+  const projects = await Project.find(filter)
+    .populate('vendorId', 'businessName location')
+    .sort({ createdAt: 1 })
+    .skip(skip)
+    .limit(limit);
+
+  return success(res, { projects, total, page, totalPages });
+});
+
+const moderateProject = catchAsync(async (req, res) => {
+  const { approve, rejectionReason } = req.body;
+
+  const updates = approve
+    ? { moderationStatus: 'approved', rejectionReason: '' }
+    : { moderationStatus: 'rejected', rejectionReason };
+
+  if (!approve && !rejectionReason) {
+    return error(res, 'A rejection reason is required.', 400);
+  }
+
+  const project = await Project.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+  if (!project) return error(res, 'Project not found.', 404);
+
+  return success(res, { project }, approve ? 'Project approved.' : 'Project rejected.');
+});
+
+const getAllProjects = catchAsync(async (req, res) => {
+  const { status, vendorId, search } = req.query;
+
+  const filter = {};
+  if (status) filter.moderationStatus = status;
+  if (vendorId) filter.vendorId = vendorId;
+  if (search) filter.title = { $regex: search, $options: 'i' };
+
+  const total = await Project.countDocuments(filter);
+  const { skip, limit, page, totalPages } = paginate(req.query, total);
+
+  const projects = await Project.find(filter)
+    .populate('vendorId', 'businessName')
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  return success(res, { projects, total, page, totalPages });
+});
+
+const getAllSubscriptions = catchAsync(async (req, res) => {
+  const { status, planName, search } = req.query;
+
+  const filter = {};
+  if (status) filter.status = status;
+  if (planName) filter.planName = planName;
+  if (search) {
+    const matchingVendors = await Vendor.find({ businessName: { $regex: search, $options: 'i' } }).select('_id');
+    filter.vendorId = { $in: matchingVendors.map((v) => v._id) };
+  }
+
+  const total = await Subscription.countDocuments(filter);
+  const { skip, limit, page, totalPages } = paginate(req.query, total);
+
+  const subscriptions = await Subscription.find(filter)
+    .populate('vendorId', 'businessName')
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  return success(res, { subscriptions, total, page, totalPages });
+});
+
+const toggleProjectFeatured = catchAsync(async (req, res) => {
+  const project = await Project.findById(req.params.id);
+  if (!project) return error(res, 'Project not found.', 404);
+  project.isFeatured = !project.isFeatured;
+  await project.save();
+  return success(res, { isFeatured: project.isFeatured },
+    project.isFeatured ? 'Project featured.' : 'Feature removed.');
+});
+
 module.exports = {
   getVendors,
   approveVendor,
@@ -361,4 +581,12 @@ module.exports = {
   getAdminUsers,
   createAdminUser,
   updateAdminPermissions,
+  getAuditLogs,
+  getRevenueReport,
+  exportRevenueReport,
+  getPendingProjects,
+  moderateProject,
+  getAllProjects,
+  getAllSubscriptions,
+  toggleProjectFeatured,
 };

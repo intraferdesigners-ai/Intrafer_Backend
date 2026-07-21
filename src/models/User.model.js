@@ -19,6 +19,7 @@ const userSchema = new mongoose.Schema(
     refreshToken: { type: String },
     isBlocked: { type: Boolean, default: false },
     blockReason: { type: String, default: '' },
+    emailNotifications: { type: Boolean, default: true },
     // Only meaningful when role === 'admin'.
     isSuperAdmin: { type: Boolean, default: false },
     adminPermissions: { type: [String], default: [] },

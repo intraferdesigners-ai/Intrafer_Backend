@@ -41,7 +41,10 @@ const createProject = catchAsync(async (req, res) => {
 
   const images = req.files ? req.files.map((f) => getFileUrl(f)) : [];
 
-  const { beforeImageIndex, afterImageIndex, ...rest } = req.body;
+  // moderationStatus/rejectionReason are admin-only fields (set exclusively by
+  // moderateProject in admin.controller.js) — strip them here so a vendor
+  // can't self-approve a project by including them in the request body.
+  const { moderationStatus, rejectionReason, beforeImageIndex, afterImageIndex, ...rest } = req.body;
   const beforeImage = images[parseInt(beforeImageIndex, 10)] || '';
   const afterImage  = images[parseInt(afterImageIndex, 10)]  || '';
 
@@ -83,7 +86,11 @@ const updateProject = catchAsync(async (req, res) => {
   // existingImages is only sent by the edit form (as a JSON array of retained
   // image URLs) — plain field updates (e.g. the publish toggle) omit it and
   // leave `images`/`beforeImage`/`afterImage` untouched.
-  const { existingImages, beforeImageIndex, afterImageIndex, ...rest } = req.body;
+  //
+  // moderationStatus/rejectionReason are admin-only fields (set exclusively
+  // by moderateProject in admin.controller.js) — strip them here so a vendor
+  // can't self-approve a project by including them in the request body.
+  const { moderationStatus, rejectionReason, existingImages, beforeImageIndex, afterImageIndex, ...rest } = req.body;
   const updates = { ...rest };
 
   if (existingImages !== undefined) {
@@ -93,6 +100,15 @@ const updateProject = catchAsync(async (req, res) => {
 
     if (beforeImageIndex !== undefined) updates.beforeImage = newImages[parseInt(beforeImageIndex, 10)] || '';
     if (afterImageIndex  !== undefined) updates.afterImage  = newImages[parseInt(afterImageIndex, 10)]  || '';
+  }
+
+  // Any real content change (anything besides a bare isPublished toggle)
+  // sends the project back for re-review.
+  const restKeys = Object.keys(rest);
+  const isPureToggle = existingImages === undefined && restKeys.length === 1 && restKeys[0] === 'isPublished';
+  if (!isPureToggle) {
+    updates.moderationStatus = 'pending';
+    updates.rejectionReason = '';
   }
 
   const project = await Project.findOneAndUpdate(

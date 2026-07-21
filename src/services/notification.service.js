@@ -15,14 +15,16 @@ const handlers = {
       metadata: { leadId: lead._id },
     });
 
-    await emailService.sendLeadAssignedEmail({
-      to: user.email,
-      vendorName: vendor.businessName,
-      enquiryId: lead.enquiryId,
-      projectType: lead.projectType,
-      city: lead.city,
-      budget: lead.budget,
-    });
+    if (user.emailNotifications !== false) {
+      await emailService.sendLeadAssignedEmail({
+        to: user.email,
+        vendorName: vendor.businessName,
+        enquiryId: lead.enquiryId,
+        projectType: lead.projectType,
+        city: lead.city,
+        budget: lead.budget,
+      });
+    }
 
     await whatsappService.notifyLeadAssigned({
       phone: user.phone,
@@ -106,12 +108,15 @@ const handlers = {
       channels: ['in_app', 'email'],
     });
 
-    await emailService.sendSubscriptionConfirmEmail({
-      to: vendorEmail,
-      vendorName: vendor.businessName,
-      planName: subscription.planName,
-      endDate: subscription.endDate,
-    });
+    const vendorUser = await User.findById(vendor.userId).select('emailNotifications');
+    if (vendorUser?.emailNotifications !== false) {
+      await emailService.sendSubscriptionConfirmEmail({
+        to: vendorEmail,
+        vendorName: vendor.businessName,
+        planName: subscription.planName,
+        endDate: subscription.endDate,
+      });
+    }
   },
 };
 

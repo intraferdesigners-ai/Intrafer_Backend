@@ -9,9 +9,13 @@ const {
   getAvailableSlots,
   getGallery,
   getStats,
+  getFeaturedProjects,
+  getRelatedProjects,
+  getHomepageContent,
 } = require('../controllers/public.controller');
 const { getPublishedPosts, getPostBySlug } = require('../controllers/blog.controller');
 const { createTicket } = require('../controllers/supportTicket.controller');
+const { getPublicCities, getPublicCategories } = require('../controllers/taxonomy.controller');
 
 const router = express.Router();
 
@@ -23,10 +27,15 @@ router.get('/vendors/:id/projects',        getVendorProjects);
 router.get('/vendors/:id/similar',         getSimilarVendors);
 router.get('/vendors/:id/available-slots', getAvailableSlots);
 router.get('/projects/:id',                getProjectById);
+router.get('/projects/:id/related',        getRelatedProjects);
+router.get('/featured-projects',     getFeaturedProjects);
 router.get('/gallery',               getGallery);
 router.get('/stats',                 getStats);
 router.get('/blog',                  getPublishedPosts);
 router.get('/blog/:slug',            getPostBySlug);
 router.post('/support-tickets',      createTicket);
+router.get('/cities',                getPublicCities);
+router.get('/categories',            getPublicCategories);
+router.get('/homepage-content',      getHomepageContent);
 
 module.exports = router;

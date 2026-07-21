@@ -12,6 +12,8 @@ const PERMISSION_KEYS = [
   'manage_support',
   'manage_email_templates',
   'manage_settings',
+  'manage_taxonomy',
+  'manage_portfolio',
 ];
 
 module.exports = { PERMISSION_KEYS };
