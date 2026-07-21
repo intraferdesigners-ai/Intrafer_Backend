@@ -2,6 +2,7 @@ const Vendor = require('../models/Vendor.model');
 const Project = require('../models/Project.model');
 const Lead = require('../models/Lead.model');
 const Settings = require('../models/Settings.model');
+const Review = require('../models/Review.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
@@ -259,4 +260,56 @@ const getHomepageContent = catchAsync(async (req, res) => {
   return success(res, { heroSubtitle: doc?.value ?? DEFAULT_HERO_SUBTITLE });
 });
 
-module.exports = { getVendors, getVendorById, getVendorsByIds, getVendorProjects, getProjectById, getSimilarVendors, getAvailableSlots, getGallery, getStats, getFeaturedProjects, getRelatedProjects, getHomepageContent };
+const REVIEW_POPULATE = [
+  { path: 'userId', select: 'name' },
+  { path: 'vendorId', select: 'businessName location.city specializations' },
+  { path: 'leadId', select: 'projectType city' },
+];
+
+// "Rahul Sharma" -> "Rahul S." — first name plus last-initial only, never the
+// full surname, so the public testimonials page doesn't expose a homeowner's
+// full name.
+const shapeReviewerName = (fullName) => {
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'Homeowner';
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+};
+
+const shapeReview = (r) => ({
+  id: r._id,
+  rating: r.rating,
+  comment: r.comment,
+  userName: shapeReviewerName(r.userId?.name),
+  vendorName: r.vendorId?.businessName || '',
+  vendorCity: r.leadId?.city || r.vendorId?.location?.city || '',
+  projectType: r.leadId?.projectType || r.vendorId?.specializations?.[0] || 'Interior Design',
+  createdAt: r.createdAt,
+});
+
+const getSiteReviews = catchAsync(async (req, res) => {
+  const statsAgg = await Review.aggregate([
+    { $group: { _id: null, avgRating: { $avg: '$rating' }, totalCount: { $sum: 1 } } },
+  ]);
+  const avgRating = statsAgg[0]?.avgRating ? Math.round(statsAgg[0].avgRating * 10) / 10 : 0;
+  const totalCount = statsAgg[0]?.totalCount ?? 0;
+
+  const withComments = await Review.find({ comment: { $ne: '' } })
+    .sort({ createdAt: -1 })
+    .limit(24)
+    .populate(REVIEW_POPULATE);
+
+  let sample = withComments;
+  if (sample.length < 6) {
+    const excludeIds = sample.map((r) => r._id);
+    const fillers = await Review.find({ _id: { $nin: excludeIds } })
+      .sort({ createdAt: -1 })
+      .limit(6 - sample.length)
+      .populate(REVIEW_POPULATE);
+    sample = [...sample, ...fillers];
+  }
+
+  return success(res, { reviews: sample.map(shapeReview), stats: { avgRating, totalCount } });
+});
+
+module.exports = { getVendors, getVendorById, getVendorsByIds, getVendorProjects, getProjectById, getSimilarVendors, getAvailableSlots, getGallery, getStats, getFeaturedProjects, getRelatedProjects, getHomepageContent, getSiteReviews };
