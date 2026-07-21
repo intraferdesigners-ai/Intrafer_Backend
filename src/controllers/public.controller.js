@@ -252,7 +252,7 @@ const getRelatedProjects = catchAsync(async (req, res) => {
 // Kept in sync with SETTINGS_DEFAULTS.homepage_hero_subtitle in
 // admin.controller.js — this is the copy that ships until an admin saves
 // their own via the CMS page, so the homepage never renders blank.
-const DEFAULT_HERO_SUBTITLE = "India's most trusted interior designer marketplace. Browse verified portfolios, compare quotes, and connect with the perfect designer for your home.";
+const DEFAULT_HERO_SUBTITLE = "Compare vetted interior designers by city, style, and budget. Every portfolio shown is real, completed work — submit one enquiry and hear back within two days.";
 
 const getHomepageContent = catchAsync(async (req, res) => {
   const doc = await Settings.findOne({ key: 'homepage_hero_subtitle' });

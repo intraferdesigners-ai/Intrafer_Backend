@@ -24,7 +24,7 @@ const SETTINGS_DEFAULTS = {
   maintenance_mode: false,
   allow_new_registrations: true,
   max_leads_per_vendor: 10,
-  homepage_hero_subtitle: "India's most trusted interior designer marketplace. Browse verified portfolios, compare quotes, and connect with the perfect designer for your home.",
+  homepage_hero_subtitle: "Compare vetted interior designers by city, style, and budget. Every portfolio shown is real, completed work — submit one enquiry and hear back within two days.",
 };
 
 const getVendors = catchAsync(async (req, res) => {
