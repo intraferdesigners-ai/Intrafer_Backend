@@ -312,4 +312,20 @@ const getSiteReviews = catchAsync(async (req, res) => {
   return success(res, { reviews: sample.map(shapeReview), stats: { avgRating, totalCount } });
 });
 
-module.exports = { getVendors, getVendorById, getVendorsByIds, getVendorProjects, getProjectById, getSimilarVendors, getAvailableSlots, getGallery, getStats, getFeaturedProjects, getRelatedProjects, getHomepageContent, getSiteReviews };
+const STYLE_LABELS = ['Modern', 'Scandinavian', 'Traditional', 'Minimalist', 'Bohemian', 'Industrial', 'Luxury', 'Contemporary'];
+
+const getStyleCounts = catchAsync(async (req, res) => {
+  const counts = {};
+  await Promise.all(STYLE_LABELS.map(async (label) => {
+    const count = await Vendor.countDocuments({
+      isApproved: true,
+      isListingEnabled: true,
+      specializations: { $in: [new RegExp(`^${label}$`, 'i')] },
+    });
+    counts[label.toLowerCase()] = count;
+  }));
+
+  return success(res, { counts });
+});
+
+module.exports = { getVendors, getVendorById, getVendorsByIds, getVendorProjects, getProjectById, getSimilarVendors, getAvailableSlots, getGallery, getStats, getFeaturedProjects, getRelatedProjects, getHomepageContent, getSiteReviews, getStyleCounts };

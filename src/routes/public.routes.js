@@ -13,6 +13,7 @@ const {
   getRelatedProjects,
   getHomepageContent,
   getSiteReviews,
+  getStyleCounts,
 } = require('../controllers/public.controller');
 const { getPublishedPosts, getPostBySlug } = require('../controllers/blog.controller');
 const { createTicket } = require('../controllers/supportTicket.controller');
@@ -39,5 +40,6 @@ router.get('/cities',                getPublicCities);
 router.get('/categories',            getPublicCategories);
 router.get('/homepage-content',      getHomepageContent);
 router.get('/site-reviews',          getSiteReviews);
+router.get('/style-counts',          getStyleCounts);
 
 module.exports = router;
