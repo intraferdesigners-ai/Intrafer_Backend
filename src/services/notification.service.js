@@ -3,6 +3,15 @@ const User = require('../models/User.model');
 const emailService = require('./email.service');
 const whatsappService = require('./whatsapp.service');
 
+function shouldSendEmail(user, eventKey) {
+  const pref = user.notificationPreferences?.[eventKey]?.email;
+  return pref !== undefined ? pref : (user.emailNotifications !== false);
+}
+function shouldSendWhatsapp(user, eventKey) {
+  const pref = user.notificationPreferences?.[eventKey]?.whatsapp;
+  return pref !== undefined ? pref : true;
+}
+
 const handlers = {
   LEAD_ASSIGNED: async ({ vendor, user, lead }) => {
     await Notification.create({
@@ -15,7 +24,7 @@ const handlers = {
       metadata: { leadId: lead._id },
     });
 
-    if (user.emailNotifications !== false) {
+    if (shouldSendEmail(user, 'leadAssigned')) {
       await emailService.sendLeadAssignedEmail({
         to: user.email,
         vendorName: vendor.businessName,
@@ -26,12 +35,14 @@ const handlers = {
       });
     }
 
-    await whatsappService.notifyLeadAssigned({
-      phone: user.phone,
-      vendorName: vendor.businessName,
-      enquiryId: lead.enquiryId,
-      projectType: lead.projectType,
-    });
+    if (shouldSendWhatsapp(user, 'leadAssigned')) {
+      await whatsappService.notifyLeadAssigned({
+        phone: user.phone,
+        vendorName: vendor.businessName,
+        enquiryId: lead.enquiryId,
+        projectType: lead.projectType,
+      });
+    }
   },
 
   LEAD_ACCEPTED: async ({ user, vendor, lead }) => {
@@ -43,6 +54,16 @@ const handlers = {
       message: `${vendor.businessName} has accepted your enquiry ${lead.enquiryId} and will contact you shortly.`,
       channels: ['in_app', 'email'],
     });
+
+    if (shouldSendEmail(user, 'leadAccepted')) {
+      await emailService.sendLeadAcceptedEmail({
+        to: user.email,
+        userName: user.name,
+        vendorName: vendor.businessName,
+        enquiryId: lead.enquiryId,
+        projectType: lead.projectType,
+      });
+    }
   },
 
   APPOINTMENT_CONFIRMED: async ({ user, vendor, lead }) => {
@@ -60,6 +81,15 @@ const handlers = {
       channels: ['in_app', 'email'],
       metadata: { leadId: lead._id },
     });
+
+    if (shouldSendEmail(user, 'appointmentConfirmed')) {
+      await emailService.sendAppointmentConfirmedEmail({
+        to: user.email,
+        userName: user.name,
+        vendorName: vendor.businessName,
+        formattedDateTime,
+      });
+    }
   },
 
   NEW_MESSAGE: async ({ recipientId, recipientRole, senderName, lead }) => {
@@ -108,8 +138,8 @@ const handlers = {
       channels: ['in_app', 'email'],
     });
 
-    const vendorUser = await User.findById(vendor.userId).select('emailNotifications');
-    if (vendorUser?.emailNotifications !== false) {
+    const vendorUser = await User.findById(vendor.userId).select('emailNotifications notificationPreferences');
+    if (vendorUser && shouldSendEmail(vendorUser, 'paymentSuccess')) {
       await emailService.sendSubscriptionConfirmEmail({
         to: vendorEmail,
         vendorName: vendor.businessName,
@@ -133,4 +163,4 @@ const dispatch = async (event, payload) => {
   }
 };
 
-module.exports = { dispatch };
+module.exports = { dispatch, shouldSendEmail, shouldSendWhatsapp };

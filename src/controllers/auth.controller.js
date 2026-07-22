@@ -163,6 +163,37 @@ const updateProfile = catchAsync(async (req, res) => {
   }, 'Profile updated.');
 });
 
+const NOTIFICATION_EVENT_KEYS = ['leadAssigned', 'leadAccepted', 'appointmentConfirmed', 'paymentSuccess'];
+const NOTIFICATION_CHANNELS = ['email', 'whatsapp'];
+
+const updateNotificationPreferences = catchAsync(async (req, res) => {
+  const updates = req.body || {};
+  const setObj = {};
+
+  // Only $set the specific leaf paths present in the request body, so
+  // event keys/channels not included are left completely untouched —
+  // a true partial merge rather than an overwrite.
+  for (const eventKey of NOTIFICATION_EVENT_KEYS) {
+    const eventUpdates = updates[eventKey];
+    if (!eventUpdates || typeof eventUpdates !== 'object') continue;
+    for (const channel of NOTIFICATION_CHANNELS) {
+      if (eventUpdates[channel] !== undefined) {
+        setObj[`notificationPreferences.${eventKey}.${channel}`] = Boolean(eventUpdates[channel]);
+      }
+    }
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: setObj },
+    { new: true, runValidators: true }
+  ).select('notificationPreferences');
+
+  if (!user) return error(res, 'User not found.', 404);
+
+  return success(res, { notificationPreferences: user.notificationPreferences }, 'Notification preferences updated.');
+});
+
 // Matches the minimum enforced by registerRules/resetPasswordRules in
 // validators/auth.validator.js — keep in sync with that file.
 const MIN_PASSWORD_LENGTH = 8;
@@ -251,4 +282,7 @@ const unsaveVendor = catchAsync(async (req, res) => {
   return success(res, {}, 'Vendor removed from saved list.');
 });
 
-module.exports = { register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, changePassword, forgotPassword, resetPassword, getSavedVendors, saveVendor, unsaveVendor };
+module.exports = {
+  register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, changePassword,
+  forgotPassword, resetPassword, getSavedVendors, saveVendor, unsaveVendor, updateNotificationPreferences,
+};

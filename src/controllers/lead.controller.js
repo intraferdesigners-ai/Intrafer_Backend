@@ -1,5 +1,6 @@
 const Lead = require('../models/Lead.model');
 const Vendor = require('../models/Vendor.model');
+const User = require('../models/User.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const generateEnquiryId = require('../utils/generateEnquiryId');
@@ -94,7 +95,14 @@ const acceptLead = catchAsync(async (req, res) => {
 
   await lead.populate('userId', 'name email phone');
 
-  notifService.dispatch('LEAD_ACCEPTED', { user: lead.userId, vendor, lead });
+  // Fetched separately (rather than widening the populate above) so the
+  // notification-preference fields aren't leaked into the API response.
+  const notifyPrefs = await User.findById(lead.userId._id).select('emailNotifications notificationPreferences').lean();
+  notifService.dispatch('LEAD_ACCEPTED', {
+    user: { ...lead.userId.toObject(), ...notifyPrefs },
+    vendor,
+    lead,
+  });
 
   return success(res, { lead }, 'Lead accepted. Contact details are now visible.');
 });
@@ -123,7 +131,14 @@ const confirmAppointment = catchAsync(async (req, res) => {
 
   await lead.populate('userId', 'name email phone');
 
-  notifService.dispatch('APPOINTMENT_CONFIRMED', { user: lead.userId, vendor, lead });
+  // Fetched separately (rather than widening the populate above) so the
+  // notification-preference fields aren't leaked into the API response.
+  const notifyPrefs = await User.findById(lead.userId._id).select('emailNotifications notificationPreferences').lean();
+  notifService.dispatch('APPOINTMENT_CONFIRMED', {
+    user: { ...lead.userId.toObject(), ...notifyPrefs },
+    vendor,
+    lead,
+  });
 
   return success(res, { lead }, 'Appointment confirmed.');
 });

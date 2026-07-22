@@ -20,6 +20,18 @@ const userSchema = new mongoose.Schema(
     isBlocked: { type: Boolean, default: false },
     blockReason: { type: String, default: '' },
     emailNotifications: { type: Boolean, default: true },
+    // Per-event channel overrides. Leaves are intentionally left with no
+    // `default` — undefined means "not yet set" and falls back to
+    // emailNotifications (email) / on (whatsapp) in notification.service.js's
+    // shouldSendEmail/shouldSendWhatsapp. Do NOT add `default: true` here:
+    // that would silently re-enable notifications on read for anyone who
+    // had previously opted out via emailNotifications, without consent.
+    notificationPreferences: {
+      leadAssigned:         { email: { type: Boolean }, whatsapp: { type: Boolean } },
+      leadAccepted:         { email: { type: Boolean }, whatsapp: { type: Boolean } },
+      appointmentConfirmed: { email: { type: Boolean }, whatsapp: { type: Boolean } },
+      paymentSuccess:       { email: { type: Boolean }, whatsapp: { type: Boolean } },
+    },
     // Only meaningful when role === 'admin'.
     isSuperAdmin: { type: Boolean, default: false },
     adminPermissions: { type: [String], default: [] },

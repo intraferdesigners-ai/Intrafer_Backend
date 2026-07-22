@@ -89,6 +89,60 @@ const sendLeadAssignedEmail = async ({ to, vendorName, enquiryId, projectType, c
   await transporter.sendMail({ from, to, subject, html });
 };
 
+const sendLeadAcceptedEmail = async ({ to, userName, vendorName, enquiryId, projectType }) => {
+  const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
+  const dashboardUrl = `${process.env.CLIENT_URL}/user/dashboard/enquiries`;
+
+  const fallbackSubject = `Your enquiry has been accepted — ${enquiryId}`;
+  const fallbackHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+        <h2 style="color:#1A56B0;margin-bottom:8px;">Intrafer</h2>
+        <p style="font-size:16px;color:#333;">Hi ${userName},</p>
+        <p style="font-size:15px;color:#555;">
+          Good news! <strong>${vendorName}</strong> has accepted your enquiry <strong>${enquiryId}</strong> for <strong>${projectType}</strong> and will contact you shortly.
+        </p>
+        <div style="text-align:center;margin:32px 0;">
+          <a href="${dashboardUrl}" style="background:#1A56B0;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:bold;">View Enquiry</a>
+        </div>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+        <p style="font-size:12px;color:#aaa;">You are receiving this because you submitted an enquiry on Intrafer.</p>
+      </div>
+    `;
+
+  const { subject, html } = await resolveTemplate(
+    'lead_accepted',
+    { userName, vendorName, enquiryId, projectType, dashboardUrl },
+    fallbackSubject,
+    fallbackHtml
+  );
+  await transporter.sendMail({ from, to, subject, html });
+};
+
+const sendAppointmentConfirmedEmail = async ({ to, userName, vendorName, formattedDateTime }) => {
+  const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
+
+  const fallbackSubject = 'Your consultation appointment is confirmed — Intrafer';
+  const fallbackHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+        <h2 style="color:#1A56B0;margin-bottom:8px;">Intrafer</h2>
+        <p style="font-size:16px;color:#333;">Hi ${userName},</p>
+        <p style="font-size:15px;color:#555;">
+          <strong>${vendorName}</strong> has confirmed your consultation appointment for <strong>${formattedDateTime}</strong>.
+        </p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+        <p style="font-size:12px;color:#aaa;">You are receiving this because you booked a consultation on Intrafer.</p>
+      </div>
+    `;
+
+  const { subject, html } = await resolveTemplate(
+    'appointment_confirmed',
+    { userName, vendorName, formattedDateTime },
+    fallbackSubject,
+    fallbackHtml
+  );
+  await transporter.sendMail({ from, to, subject, html });
+};
+
 const sendSubscriptionConfirmEmail = async ({ to, vendorName, planName, endDate }) => {
   const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
   const formattedDate = new Date(endDate).toLocaleDateString('en-IN');
@@ -226,6 +280,6 @@ const sendSupportTicketConfirmationEmail = async ({ to, name, subject: ticketSub
 };
 
 module.exports = {
-  sendOTPEmail, sendLeadAssignedEmail, sendSubscriptionConfirmEmail, sendVendorApprovedEmail, sendVendorRejectedEmail, sendPasswordResetEmail,
-  sendSupportTicketConfirmationEmail,
+  sendOTPEmail, sendLeadAssignedEmail, sendLeadAcceptedEmail, sendAppointmentConfirmedEmail, sendSubscriptionConfirmEmail,
+  sendVendorApprovedEmail, sendVendorRejectedEmail, sendPasswordResetEmail, sendSupportTicketConfirmationEmail,
 };
