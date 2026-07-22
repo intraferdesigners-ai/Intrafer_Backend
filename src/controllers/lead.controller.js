@@ -160,6 +160,8 @@ const updateLeadStatus = catchAsync(async (req, res) => {
     await Vendor.findByIdAndUpdate(vendor._id, { $inc: { wonLeads: 1 } });
   }
 
+  await lead.populate('userId', 'name email phone');
+
   return success(res, { lead }, 'Status updated.');
 });
 
