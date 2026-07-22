@@ -183,6 +183,70 @@ const getAnalytics = catchAsync(async (req, res) => {
   });
 });
 
+const FUNNEL_STATUSES = ['new', 'contacted', 'quotation_sent', 'accepted', 'won', 'lost'];
+
+const getAnalyticsDetail = catchAsync(async (req, res) => {
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor) return error(res, 'Vendor profile not found.', 404);
+
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+  const [monthlyLeads, statusCounts, topProjectTypes, cities, respondedLeads] = await Promise.all([
+    Lead.aggregate([
+      { $match: { vendorId: vendor._id, createdAt: { $gte: sixMonthsAgo } } },
+      { $group: {
+        _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+        count: { $sum: 1 },
+      }},
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+    ]),
+    Lead.aggregate([
+      { $match: { vendorId: vendor._id } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]),
+    Lead.aggregate([
+      { $match: { vendorId: vendor._id, projectType: { $ne: '' } } },
+      { $group: { _id: '$projectType', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+    ]),
+    Lead.aggregate([
+      { $match: { vendorId: vendor._id } },
+      { $group: { _id: '$city', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+    ]),
+    Lead.find({
+      vendorId: vendor._id,
+      statusHistory: { $elemMatch: { status: { $ne: 'new' } } },
+    }).select('createdAt statusHistory'),
+  ]);
+
+  const statusCountMap = statusCounts.reduce((acc, { _id, count }) => {
+    acc[_id] = count;
+    return acc;
+  }, {});
+  const funnel = FUNNEL_STATUSES.map((status) => ({ status, count: statusCountMap[status] || 0 }));
+
+  let avgResponseHours = null;
+  if (respondedLeads.length > 0) {
+    const totalHours = respondedLeads.reduce((sum, lead) => {
+      const firstResponse = lead.statusHistory.find((h) => h.status !== 'new');
+      return sum + (firstResponse.changedAt - lead.createdAt) / (1000 * 60 * 60);
+    }, 0);
+    avgResponseHours = totalHours / respondedLeads.length;
+  }
+
+  return success(res, {
+    monthlyLeads,
+    funnel,
+    topProjectTypes,
+    cities,
+    avgResponseHours,
+  });
+});
+
 const updateAvailability = catchAsync(async (req, res) => {
   const { workingDays, startTime, endTime, slotDurationMinutes } = req.body;
   const availability = {};
@@ -218,5 +282,5 @@ const updateNotes = catchAsync(async (req, res) => {
 module.exports = {
   getProfile, updateProfile, updateAvailability,
   createProject, getProjects, getProjectById, updateProject, deleteProject, reorderProjects,
-  getAnalytics, updateNotes,
+  getAnalytics, getAnalyticsDetail, updateNotes,
 };

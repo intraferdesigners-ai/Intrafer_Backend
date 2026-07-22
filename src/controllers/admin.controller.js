@@ -35,7 +35,7 @@ const getVendors = catchAsync(async (req, res) => {
   const { skip, limit, page, totalPages } = paginate(req.query, total);
 
   const vendors = await Vendor.find(filter)
-    .populate('userId', 'name email phone')
+    .populate('userId', 'name email phone isPhoneVerified')
     .populate('subscriptionId', 'planName status endDate')
     .skip(skip)
     .limit(limit);
@@ -143,6 +143,8 @@ const getAnalytics = catchAsync(async (req, res) => {
     planBreakdown,
     monthlyLeads,
     featuredCount,
+    pendingVendors,
+    pendingPortfolio,
   ] = await Promise.all([
     Vendor.countDocuments({ isApproved: true }),
     User.countDocuments({ role: 'user' }),
@@ -165,6 +167,8 @@ const getAnalytics = catchAsync(async (req, res) => {
       { $sort: { '_id.year': 1, '_id.month': 1 } },
     ]),
     Vendor.countDocuments({ isFeatured: true, isApproved: true }),
+    Vendor.countDocuments({ isApproved: false }),
+    Project.countDocuments({ moderationStatus: 'pending' }),
   ]);
 
   const totalRevenue = revenueResult[0]?.totalRevenue ?? 0;
@@ -178,6 +182,8 @@ const getAnalytics = catchAsync(async (req, res) => {
     featuredCount,
     planBreakdown,
     monthlyLeads,
+    pendingVendors,
+    pendingPortfolio,
   });
 });
 

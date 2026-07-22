@@ -2,7 +2,7 @@ const express = require('express');
 const {
   getProfile, updateProfile, updateAvailability,
   createProject, getProjects, getProjectById, updateProject, deleteProject, reorderProjects,
-  getAnalytics,
+  getAnalytics, getAnalyticsDetail,
 } = require('../controllers/vendor.controller');
 const { protect } = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
@@ -25,5 +25,6 @@ router.post('/projects',       ...isVendor, (req, res, next) => { req.uploadFold
 router.put('/projects/:id',    ...isVendor, (req, res, next) => { req.uploadFolder = 'projects'; next(); }, upload.array('images', 10), updateProject);
 router.delete('/projects/:id', ...isVendor, deleteProject);
 router.get('/analytics',       ...isVendor, getAnalytics);
+router.get('/analytics/detail', ...isVendor, getAnalyticsDetail);
 
 module.exports = router;
