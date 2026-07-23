@@ -7,8 +7,6 @@ const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
 
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
 const SORT_MAP = {
   rating:  { rating: -1 },
   reviews: { reviewCount: -1 },
@@ -120,18 +118,12 @@ const getAvailableSlots = catchAsync(async (req, res) => {
 
   const dayStart = new Date(`${date}T00:00:00`);
   if (Number.isNaN(dayStart.getTime())) return error(res, 'Invalid date.', 400);
-  const weekday = DAY_LABELS[dayStart.getDay()];
 
   const {
-    workingDays = [],
     startTime = '10:00',
     endTime = '18:00',
     slotDurationMinutes = 60,
   } = vendor.availability || {};
-
-  if (!workingDays.includes(weekday)) {
-    return success(res, { slots: [], reason: `Vendor is not available on ${weekday}.` });
-  }
 
   const [startH, startM] = startTime.split(':').map(Number);
   const [endH, endM] = endTime.split(':').map(Number);
