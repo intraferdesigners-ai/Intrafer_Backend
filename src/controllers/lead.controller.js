@@ -178,6 +178,11 @@ const cancelLead = catchAsync(async (req, res) => {
   lead.statusHistory.push({ status: 'cancelled', changedBy: req.user._id, note: req.body?.reason || '' });
   await lead.save();
 
+  const vendor = await Vendor.findById(lead.vendorId);
+  if (vendor) {
+    notifService.dispatch('LEAD_CANCELLED', { vendor, user: req.user, lead });
+  }
+
   return success(res, { lead }, 'Enquiry cancelled.');
 });
 

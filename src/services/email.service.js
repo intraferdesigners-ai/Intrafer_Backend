@@ -118,6 +118,35 @@ const sendLeadAcceptedEmail = async ({ to, userName, vendorName, enquiryId, proj
   await transporter.sendMail({ from, to, subject, html });
 };
 
+const sendLeadCancelledEmail = async ({ to, vendorName, userName, enquiryId, projectType }) => {
+  const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
+  const dashboardUrl = `${process.env.CLIENT_URL}/vendor/dashboard/leads`;
+
+  const fallbackSubject = `Enquiry cancelled — ${enquiryId}`;
+  const fallbackHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+        <h2 style="color:#1A56B0;margin-bottom:8px;">Intrafer</h2>
+        <p style="font-size:16px;color:#333;">Hi ${vendorName},</p>
+        <p style="font-size:15px;color:#555;">
+          <strong>${userName}</strong> has cancelled their enquiry <strong>${enquiryId}</strong> for <strong>${projectType}</strong>.
+        </p>
+        <div style="text-align:center;margin:32px 0;">
+          <a href="${dashboardUrl}" style="background:#1A56B0;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:bold;">View Leads</a>
+        </div>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+        <p style="font-size:12px;color:#aaa;">You are receiving this because you are a registered vendor on Intrafer.</p>
+      </div>
+    `;
+
+  const { subject, html } = await resolveTemplate(
+    'lead_cancelled',
+    { vendorName, userName, enquiryId, projectType, dashboardUrl },
+    fallbackSubject,
+    fallbackHtml
+  );
+  await transporter.sendMail({ from, to, subject, html });
+};
+
 const sendAppointmentConfirmedEmail = async ({ to, userName, vendorName, formattedDateTime }) => {
   const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
 
@@ -280,6 +309,6 @@ const sendSupportTicketConfirmationEmail = async ({ to, name, subject: ticketSub
 };
 
 module.exports = {
-  sendOTPEmail, sendLeadAssignedEmail, sendLeadAcceptedEmail, sendAppointmentConfirmedEmail, sendSubscriptionConfirmEmail,
+  sendOTPEmail, sendLeadAssignedEmail, sendLeadAcceptedEmail, sendLeadCancelledEmail, sendAppointmentConfirmedEmail, sendSubscriptionConfirmEmail,
   sendVendorApprovedEmail, sendVendorRejectedEmail, sendPasswordResetEmail, sendSupportTicketConfirmationEmail,
 };

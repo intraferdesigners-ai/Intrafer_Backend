@@ -66,6 +66,29 @@ const handlers = {
     }
   },
 
+  LEAD_CANCELLED: async ({ vendor, user, lead }) => {
+    await Notification.create({
+      recipientId: vendor.userId,
+      recipientRole: 'vendor',
+      type: 'lead_cancelled',
+      title: 'Enquiry Cancelled',
+      message: `${user.name} cancelled their enquiry ${lead.enquiryId} for ${lead.projectType}.`,
+      channels: ['in_app', 'email'],
+      metadata: { leadId: lead._id },
+    });
+
+    const vendorUser = await User.findById(vendor.userId).select('email emailNotifications notificationPreferences');
+    if (vendorUser && shouldSendEmail(vendorUser, 'leadCancelled')) {
+      await emailService.sendLeadCancelledEmail({
+        to: vendorUser.email,
+        vendorName: vendor.businessName,
+        userName: user.name,
+        enquiryId: lead.enquiryId,
+        projectType: lead.projectType,
+      });
+    }
+  },
+
   APPOINTMENT_CONFIRMED: async ({ user, vendor, lead }) => {
     const formattedDateTime = new Date(lead.confirmedDateTime).toLocaleString('en-IN', {
       dateStyle: 'medium',
