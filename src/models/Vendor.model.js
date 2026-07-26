@@ -29,6 +29,13 @@ const vendorSchema = new mongoose.Schema(
     rating: { type: Number, default: 0, min: 0, max: 5 },
     reviewCount: { type: Number, default: 0 },
     isApproved: { type: Boolean, default: false },
+    // Tri-state review status — isApproved alone can't distinguish "never
+    // reviewed" from "reviewed and rejected" (both are isApproved: false).
+    // Kept in sync with isApproved going forward: 'approved' <-> true,
+    // 'pending'/'rejected' <-> false. isApproved itself is left in place
+    // unchanged since public.controller.js's listing queries depend on it.
+    approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    reviewedAt: { type: Date },
     rejectionReason: { type: String, default: '' },
     isListingEnabled: { type: Boolean, default: false },
     isFeatured: { type: Boolean, default: false },

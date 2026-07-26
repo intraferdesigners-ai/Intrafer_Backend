@@ -1,6 +1,6 @@
 const express = require('express');
 const {
-  getVendors, approveVendor, toggleFeatured,
+  getVendors, getVendorById, approveVendor, toggleFeatured,
   getLeads, reassignLead,
   getAnalytics, getUsers, toggleBlockUser,
   getAdminProfile, updateAdminProfile, changePassword,
@@ -45,6 +45,7 @@ const isSuperAdmin = (req, res, next) =>
   req.user.isSuperAdmin ? next() : error(res, 'Super admin access required.', 403);
 
 router.get('/vendors',                ...isAdmin, requirePermission('manage_vendors'), getVendors);
+router.get('/vendors/:id',            ...isAdmin, requirePermission('manage_vendors'), getVendorById);
 router.put('/vendors/:id/approve',    ...isAdmin, requirePermission('manage_vendors'), auditLog('Approve/reject vendor'), approveVendor);
 router.put('/vendors/:id/feature',    ...isAdmin, requirePermission('manage_vendors'), auditLog('Toggle vendor featured'), toggleFeatured);
 router.get('/leads',                  ...isAdmin, requirePermission('manage_leads'), getLeads);

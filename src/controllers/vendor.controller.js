@@ -39,6 +39,19 @@ const createProject = catchAsync(async (req, res) => {
   const vendor = await Vendor.findOne({ userId: req.user._id });
   if (!vendor) return error(res, 'Vendor profile not found.', 404);
 
+  // Build order is Profile -> Subscribe -> Portfolio -> admin approval, so a
+  // vendor can't upload portfolio projects before subscribing. Gated on
+  // isListingEnabled — the same flag lead.controller.js, admin.controller.js,
+  // and public.controller.js already treat as the canonical "is this vendor
+  // currently subscribed" signal — rather than a live Subscription query, so
+  // this stays consistent with the rest of the app. (Checked directly: most
+  // seeded demo vendors have isListingEnabled set true with no corresponding
+  // Subscription document at all, so a live Subscription check would have
+  // incorrectly blocked them.)
+  if (!vendor.isListingEnabled) {
+    return error(res, 'An active subscription is required before adding portfolio projects.', 403);
+  }
+
   const images = req.files ? req.files.map((f) => getFileUrl(f)) : [];
 
   // moderationStatus/rejectionReason are admin-only fields (set exclusively by

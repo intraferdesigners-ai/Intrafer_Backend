@@ -30,6 +30,7 @@ const SETTINGS_DEFAULTS = {
 const getVendors = catchAsync(async (req, res) => {
   const filter = {};
   if (req.query.approved !== undefined) filter.isApproved = req.query.approved === 'true';
+  if (req.query.status) filter.approvalStatus = req.query.status;
 
   const total = await Vendor.countDocuments(filter);
   const { skip, limit, page, totalPages } = paginate(req.query, total);
@@ -43,15 +44,36 @@ const getVendors = catchAsync(async (req, res) => {
   return success(res, { vendors, total, page, totalPages });
 });
 
+// Dedicated single-vendor lookup — the admin vendor detail page previously
+// fetched the unfiltered, paginated getVendors list and searched it
+// client-side, which silently 404'd ("Vendor not found") for any vendor
+// past the default page-1 cutoff (10 vendors) once the DB grew past that.
+const getVendorById = catchAsync(async (req, res) => {
+  const vendor = await Vendor.findById(req.params.id)
+    .populate('userId', 'name email phone isPhoneVerified')
+    .populate('subscriptionId', 'planName status endDate');
+  if (!vendor) return error(res, 'Vendor not found.', 404);
+  return success(res, { vendor });
+});
+
 const approveVendor = catchAsync(async (req, res) => {
   const { approve, rejectionReason } = req.body;
 
   const vendor = await Vendor.findById(req.params.id).populate('userId', 'name email');
   if (!vendor) return error(res, 'Vendor not found.', 404);
 
+  if (!approve && !rejectionReason) {
+    return error(res, 'A rejection reason is required.', 400);
+  }
+
   vendor.isApproved = approve;
-  if (!approve && rejectionReason) vendor.rejectionReason = rejectionReason;
-  if (approve) vendor.rejectionReason = '';
+  vendor.approvalStatus = approve ? 'approved' : 'rejected';
+  vendor.reviewedAt = new Date();
+  if (!approve) vendor.rejectionReason = rejectionReason;
+  // rejectionReason is intentionally NOT cleared on approve — a vendor who
+  // was rejected then fixed the issue and got approved keeps the last reason
+  // around as a small "previously rejected: ..." historical note in the UI,
+  // since it costs nothing and can be useful context later.
   await vendor.save();
 
   if (vendor.userId?.email) {
@@ -572,6 +594,7 @@ const toggleProjectFeatured = catchAsync(async (req, res) => {
 
 module.exports = {
   getVendors,
+  getVendorById,
   approveVendor,
   toggleFeatured,
   getLeads,
