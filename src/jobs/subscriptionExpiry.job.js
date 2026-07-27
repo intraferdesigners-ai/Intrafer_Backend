@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const Subscription = require('../models/Subscription.model');
 const Vendor = require('../models/Vendor.model');
+const notifService = require('../services/notification.service');
 
 const startJobs = () => {
   cron.schedule(
@@ -42,9 +43,12 @@ const startJobs = () => {
         });
 
         for (const sub of expiringSoon) {
-          console.log(
-            `[CRON] Reminder: vendor ${sub.vendorId} subscription expires ${sub.endDate}`
-          );
+          if (!sub.vendorId || !sub.vendorId.userId) continue;
+          notifService.dispatch('SUBSCRIPTION_EXPIRING', {
+            vendor: sub.vendorId,
+            user: sub.vendorId.userId,
+            subscription: sub,
+          });
         }
       } catch (err) {
         console.error(`[CRON] Reminder job error: ${err.message}`);

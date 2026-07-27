@@ -202,6 +202,35 @@ const sendSubscriptionConfirmEmail = async ({ to, vendorName, planName, endDate 
   await transporter.sendMail({ from, to, subject, html });
 };
 
+const sendSubscriptionExpiringEmail = async ({ to, vendorName, planName, formattedDate }) => {
+  const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
+  const dashboardUrl = `${process.env.CLIENT_URL}/vendor/dashboard/subscription`;
+
+  const fallbackSubject = 'Your Intrafer subscription is expiring soon';
+  const fallbackHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+        <h2 style="color:#1A56B0;margin-bottom:8px;">Intrafer</h2>
+        <p style="font-size:16px;color:#333;">Hi ${vendorName},</p>
+        <p style="font-size:15px;color:#555;">
+          Your <strong>${planName}</strong> plan expires on <strong>${formattedDate}</strong>. Renew now to keep your listing live and continue receiving leads.
+        </p>
+        <div style="text-align:center;margin:32px 0;">
+          <a href="${dashboardUrl}" style="background:#1A56B0;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:bold;">Renew Subscription</a>
+        </div>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+        <p style="font-size:12px;color:#aaa;">You are receiving this because you are a registered vendor on Intrafer.</p>
+      </div>
+    `;
+
+  const { subject, html } = await resolveTemplate(
+    'subscription_expiring',
+    { vendorName, planName, formattedDate, dashboardUrl },
+    fallbackSubject,
+    fallbackHtml
+  );
+  await transporter.sendMail({ from, to, subject, html });
+};
+
 const sendVendorApprovedEmail = async ({ to, name, businessName }) => {
   const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
 
@@ -310,5 +339,5 @@ const sendSupportTicketConfirmationEmail = async ({ to, name, subject: ticketSub
 
 module.exports = {
   sendOTPEmail, sendLeadAssignedEmail, sendLeadAcceptedEmail, sendLeadCancelledEmail, sendAppointmentConfirmedEmail, sendSubscriptionConfirmEmail,
-  sendVendorApprovedEmail, sendVendorRejectedEmail, sendPasswordResetEmail, sendSupportTicketConfirmationEmail,
+  sendVendorApprovedEmail, sendVendorRejectedEmail, sendPasswordResetEmail, sendSupportTicketConfirmationEmail, sendSubscriptionExpiringEmail,
 };

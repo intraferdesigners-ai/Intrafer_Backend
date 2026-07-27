@@ -149,6 +149,59 @@ const handlers = {
     });
   },
 
+  VENDOR_APPROVED: async ({ vendor }) => {
+    // Email is already sent separately by approveVendor itself — this only
+    // creates the in-app record. 'email' still appears in channels since one
+    // is genuinely sent, just not from here.
+    await Notification.create({
+      recipientId: vendor.userId._id || vendor.userId,
+      recipientRole: 'vendor',
+      type: 'vendor_approved',
+      title: 'Your profile has been approved',
+      message: `Congratulations! Your designer profile "${vendor.businessName}" is now live on Intrafer.`,
+      channels: ['in_app', 'email'],
+    });
+  },
+
+  SUBSCRIPTION_EXPIRING: async ({ vendor, user, subscription }) => {
+    const formattedDate = new Date(subscription.endDate).toLocaleDateString('en-IN');
+
+    await Notification.create({
+      recipientId: user._id,
+      recipientRole: 'vendor',
+      type: 'subscription_expiring',
+      title: 'Your subscription is expiring soon',
+      message: `Your ${subscription.planName} plan expires on ${formattedDate}. Renew now to keep your listing live.`,
+      channels: ['in_app', 'email'],
+      metadata: { subscriptionId: subscription._id },
+    });
+
+    // Fetched separately (rather than trusting the job's own populate) so the
+    // notification-preference fields are always fresh, same pattern as
+    // LEAD_CANCELLED above.
+    const vendorUser = await User.findById(user._id).select('email emailNotifications notificationPreferences').lean();
+    if (vendorUser && shouldSendEmail(vendorUser, 'subscriptionExpiring')) {
+      await emailService.sendSubscriptionExpiringEmail({
+        to: vendorUser.email,
+        vendorName: vendor.businessName,
+        planName: subscription.planName,
+        formattedDate,
+      });
+    }
+  },
+
+  ENQUIRY_CREATED: async ({ user, vendor, lead }) => {
+    await Notification.create({
+      recipientId: user._id,
+      recipientRole: 'user',
+      type: 'enquiry_created',
+      title: 'Enquiry Submitted',
+      message: `Your enquiry ${lead.enquiryId} for ${lead.projectType} has been sent to ${vendor.businessName}.`,
+      channels: ['in_app'],
+      metadata: { leadId: lead._id },
+    });
+  },
+
   PAYMENT_SUCCESS: async ({ vendor, subscription, vendorEmail }) => {
     const formattedDate = new Date(subscription.endDate).toLocaleDateString('en-IN');
 

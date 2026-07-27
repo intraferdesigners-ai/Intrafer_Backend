@@ -35,6 +35,7 @@ const createLead = catchAsync(async (req, res) => {
   await Vendor.findByIdAndUpdate(vendor._id, { $inc: { totalLeads: 1 } });
 
   notifService.dispatch('LEAD_ASSIGNED', { vendor, user: req.user, lead });
+  notifService.dispatch('ENQUIRY_CREATED', { user: req.user, vendor, lead });
 
   return success(res, { lead }, 'Enquiry submitted successfully.', 201);
 });

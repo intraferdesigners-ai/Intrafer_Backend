@@ -10,6 +10,7 @@ const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
 const { sendVendorApprovedEmail, sendVendorRejectedEmail } = require('../services/email.service');
+const notifService = require('../services/notification.service');
 const { PERMISSION_KEYS } = require('../constants/permissions');
 
 const SETTINGS_DEFAULTS = {
@@ -83,6 +84,7 @@ const approveVendor = catchAsync(async (req, res) => {
         name: vendor.userId.name,
         businessName: vendor.businessName,
       }).catch(() => {});
+      notifService.dispatch('VENDOR_APPROVED', { vendor });
     } else {
       sendVendorRejectedEmail({
         to: vendor.userId.email,
