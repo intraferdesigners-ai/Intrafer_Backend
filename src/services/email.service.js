@@ -337,7 +337,34 @@ const sendSupportTicketConfirmationEmail = async ({ to, name, subject: ticketSub
   await transporter.sendMail({ from, to, subject, html });
 };
 
+const sendSupportTicketResolvedEmail = async ({ to, name, subject: ticketSubject }) => {
+  const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
+
+  const fallbackSubject = `Your support ticket has been resolved — Intrafer Support`;
+  const fallbackHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+        <h2 style="color:#1A56B0;margin-bottom:8px;">Intrafer</h2>
+        <p style="font-size:16px;color:#333;">Hi ${name},</p>
+        <p style="font-size:15px;color:#555;">
+          Good news — your support ticket "<strong>${ticketSubject}</strong>" has been marked as resolved.
+        </p>
+        <p style="font-size:15px;color:#555;">If this doesn't fully address your issue or you have more questions, just reply to this email and we'll take another look.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+        <p style="font-size:12px;color:#aaa;">Intrafer — India's interior designer marketplace.</p>
+      </div>
+    `;
+
+  const { subject, html } = await resolveTemplate(
+    'support_ticket_resolved',
+    { name, subject: ticketSubject },
+    fallbackSubject,
+    fallbackHtml
+  );
+  await transporter.sendMail({ from, to, subject, html });
+};
+
 module.exports = {
   sendOTPEmail, sendLeadAssignedEmail, sendLeadAcceptedEmail, sendLeadCancelledEmail, sendAppointmentConfirmedEmail, sendSubscriptionConfirmEmail,
   sendVendorApprovedEmail, sendVendorRejectedEmail, sendPasswordResetEmail, sendSupportTicketConfirmationEmail, sendSubscriptionExpiringEmail,
+  sendSupportTicketResolvedEmail,
 };

@@ -2,6 +2,7 @@ const SupportTicket = require('../models/SupportTicket.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const notifService = require('../services/notification.service');
+const emailService = require('../services/email.service');
 
 const createTicket = catchAsync(async (req, res) => {
   const { name, email, phone, subject, message, userId } = req.body;
@@ -34,12 +35,26 @@ const getAllTickets = catchAsync(async (req, res) => {
 const updateTicket = catchAsync(async (req, res) => {
   const { status, adminNotes } = req.body;
 
+  const existing = await SupportTicket.findById(req.params.id).select('status');
+  if (!existing) return error(res, 'Ticket not found.', 404);
+  const previousStatus = existing.status;
+
   const updates = {};
   if (status !== undefined) updates.status = status;
   if (adminNotes !== undefined) updates.adminNotes = adminNotes;
 
   const ticket = await SupportTicket.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
-  if (!ticket) return error(res, 'Ticket not found.', 404);
+
+  // Only on the actual transition into 'resolved' — not on every save while
+  // already resolved, and not on a later move to 'closed' (closed is treated
+  // as an internal housekeeping state, not a second customer-facing moment).
+  if (previousStatus !== 'resolved' && ticket.status === 'resolved') {
+    emailService.sendSupportTicketResolvedEmail({
+      to: ticket.email,
+      name: ticket.name,
+      subject: ticket.subject,
+    }).catch((err) => console.error('[Email] Support ticket resolved email failed:', err.message));
+  }
 
   return success(res, { ticket }, 'Ticket updated.');
 });
