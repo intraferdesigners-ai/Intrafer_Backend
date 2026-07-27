@@ -539,6 +539,11 @@ const moderateProject = catchAsync(async (req, res) => {
   const project = await Project.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
   if (!project) return error(res, 'Project not found.', 404);
 
+  const vendor = await Vendor.findById(project.vendorId);
+  if (vendor) {
+    notifService.dispatch(approve ? 'PROJECT_APPROVED' : 'PROJECT_REJECTED', { vendor, project });
+  }
+
   return success(res, { project }, approve ? 'Project approved.' : 'Project rejected.');
 });
 

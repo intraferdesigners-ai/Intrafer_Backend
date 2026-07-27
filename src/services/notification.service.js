@@ -190,6 +190,30 @@ const handlers = {
     }
   },
 
+  PROJECT_APPROVED: async ({ vendor, project }) => {
+    await Notification.create({
+      recipientId: vendor.userId,
+      recipientRole: 'vendor',
+      type: 'project_approved',
+      title: 'Portfolio Project Approved',
+      message: `Your project "${project.title}" has been approved and is now visible on your public profile.`,
+      channels: ['in_app'],
+      metadata: { projectId: project._id },
+    });
+  },
+
+  PROJECT_REJECTED: async ({ vendor, project }) => {
+    await Notification.create({
+      recipientId: vendor.userId,
+      recipientRole: 'vendor',
+      type: 'project_rejected',
+      title: 'Portfolio Project Rejected',
+      message: `Your project "${project.title}" was rejected: ${project.rejectionReason}`,
+      channels: ['in_app'],
+      metadata: { projectId: project._id },
+    });
+  },
+
   ENQUIRY_CREATED: async ({ user, vendor, lead }) => {
     await Notification.create({
       recipientId: user._id,

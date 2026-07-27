@@ -17,6 +17,8 @@ const notificationSchema = new mongoose.Schema(
         'payment_success',
         'subscription_expiring',
         'vendor_approved',
+        'project_approved',
+        'project_rejected',
       ],
       required: true,
     },
