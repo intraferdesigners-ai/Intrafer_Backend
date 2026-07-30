@@ -24,10 +24,12 @@ const generateInvoiceNumber = async () => {
 };
 
 // price is in paise (matches Razorpay's expected unit and planPrice storage)
+// TEMP test pricing for live Razorpay flow verification — real prices were
+// 799900 / 1499900 / 1999900. Revert to those once testing is done.
 const PLANS = [
-  { name: '3 Month',  price: 799900,  leadsPerMonth: 10, durationDays: 90  },
-  { name: '6 Month',  price: 1499900, leadsPerMonth: 10, durationDays: 180 },
-  { name: '12 Month', price: 1999900, leadsPerMonth: 10, durationDays: 365 },
+  { name: '3 Month',  price: 100, leadsPerMonth: 10, durationDays: 90  },
+  { name: '6 Month',  price: 100, leadsPerMonth: 10, durationDays: 180 },
+  { name: '12 Month', price: 100, leadsPerMonth: 10, durationDays: 365 },
 ];
 
 const getPlans = catchAsync(async (req, res) => {
