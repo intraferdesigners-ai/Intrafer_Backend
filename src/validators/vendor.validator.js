@@ -10,7 +10,7 @@ const updateProfileRules = [
   body('location.city').optional().trim().notEmpty().withMessage('City cannot be empty'),
   body('location.state').optional().trim().notEmpty().withMessage('State cannot be empty'),
   body('location.pincode')
-    .optional()
+    .optional({ checkFalsy: true })
     .matches(/^\d{6}$/)
     .withMessage('Pincode must be 6 digits'),
 ];
