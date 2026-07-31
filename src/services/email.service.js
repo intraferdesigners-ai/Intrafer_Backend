@@ -254,20 +254,22 @@ const sendVendorApprovedEmail = async ({ to, name, businessName }) => {
 
 const sendVendorRejectedEmail = async ({ to, name, businessName, rejectionReason }) => {
   const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
-  const effectiveReason = rejectionReason || 'Please complete your profile and add portfolio photos.';
+  const effectiveReason = rejectionReason || 'Please contact support for details.';
 
-  const fallbackSubject = 'Update on your Intrafer application';
+  // Vendors go live automatically now, so this only ever fires when an admin
+  // takes down an already-live listing (bad actor, policy violation, etc.) —
+  // not as an initial-application rejection.
+  const fallbackSubject = 'Your Intrafer listing has been taken down';
   const fallbackHtml = `
       <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
         <h2 style="color:#B5541E;margin-bottom:8px;">Intrafer</h2>
-        <h3 style="color:#222;">Application update required</h3>
+        <h3 style="color:#222;">Your listing has been taken down</h3>
         <p style="font-size:15px;color:#333;">Hi ${name},</p>
-        <p style="font-size:15px;color:#555;">Thank you for applying to list <strong>${businessName}</strong> on Intrafer.</p>
-        <p style="font-size:15px;color:#555;">We need a few more details before we can approve your listing:</p>
+        <p style="font-size:15px;color:#555;">Your design studio <strong>${businessName}</strong> has been removed from Intrafer by our team:</p>
         <blockquote style="border-left:3px solid #B5541E;padding-left:12px;color:#555;margin:16px 0;">
           ${effectiveReason}
         </blockquote>
-        <p style="font-size:15px;color:#555;">Log in to complete your profile: <a href="https://intrafer.in/vendor/dashboard/profile" style="color:#B5541E;">Update Profile</a></p>
+        <p style="font-size:15px;color:#555;">If you believe this is a mistake, reply to this email or contact support.</p>
         <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
         <p style="font-size:12px;color:#aaa;">Intrafer — India's interior designer marketplace.</p>
       </div>

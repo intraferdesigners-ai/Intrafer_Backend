@@ -24,9 +24,15 @@ const handlers = {
       metadata: { leadId: lead._id },
     });
 
-    if (shouldSendEmail(user, 'leadAssigned')) {
+    // This notifies the VENDOR that a new lead came in, so it must resolve
+    // the vendor's own account (not `user`, the homeowner who submitted the
+    // enquiry) for the email/phone — same lookup pattern as LEAD_CANCELLED
+    // below. `vendor` (a Vendor doc) has no email/phone fields itself.
+    const vendorUser = await User.findById(vendor.userId).select('email phone emailNotifications notificationPreferences');
+
+    if (vendorUser && shouldSendEmail(vendorUser, 'leadAssigned')) {
       await emailService.sendLeadAssignedEmail({
-        to: user.email,
+        to: vendorUser.email,
         vendorName: vendor.businessName,
         enquiryId: lead.enquiryId,
         projectType: lead.projectType,
@@ -35,9 +41,9 @@ const handlers = {
       });
     }
 
-    if (shouldSendWhatsapp(user, 'leadAssigned')) {
+    if (vendorUser && shouldSendWhatsapp(vendorUser, 'leadAssigned')) {
       await whatsappService.notifyLeadAssigned({
-        phone: user.phone,
+        phone: vendorUser.phone,
         vendorName: vendor.businessName,
         enquiryId: lead.enquiryId,
         projectType: lead.projectType,

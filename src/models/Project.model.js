@@ -17,7 +17,9 @@ const projectSchema = new mongoose.Schema(
     timeline: { type: String, default: '' },
     isFeatured: { type: Boolean, default: false },
     sortOrder: { type: Number, default: 0 },
-    moderationStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    // Auto-approved on upload — moderation is a post-hoc admin takedown tool
+    // (inappropriate content, fake work, etc.), not a pre-listing review gate.
+    moderationStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved' },
     rejectionReason: { type: String, default: '' },
   },
   { timestamps: true }

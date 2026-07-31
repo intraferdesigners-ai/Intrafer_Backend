@@ -115,14 +115,12 @@ const updateProject = catchAsync(async (req, res) => {
     if (afterImageIndex  !== undefined) updates.afterImage  = newImages[parseInt(afterImageIndex, 10)]  || '';
   }
 
-  // Any real content change (anything besides a bare isPublished toggle)
-  // sends the project back for re-review.
-  const restKeys = Object.keys(rest);
-  const isPureToggle = existingImages === undefined && restKeys.length === 1 && restKeys[0] === 'isPublished';
-  if (!isPureToggle) {
-    updates.moderationStatus = 'pending';
-    updates.rejectionReason = '';
-  }
+  // moderationStatus is a post-hoc admin takedown flag now, not a pre-listing
+  // review gate that public.controller.js's queries still check — so edits no
+  // longer reset it to 'pending'. Doing that would have silently unpublished
+  // an already-live project the moment a vendor touched it, which is exactly
+  // the kind of blocker this project no longer wants. A project's moderation
+  // status only ever changes via an explicit admin action in moderateProject.
 
   const project = await Project.findOneAndUpdate(
     { _id: req.params.id, vendorId: vendor._id },

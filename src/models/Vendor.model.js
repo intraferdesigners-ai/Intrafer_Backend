@@ -28,13 +28,15 @@ const vendorSchema = new mongoose.Schema(
     portfolioImages: [{ type: String }],
     rating: { type: Number, default: 0, min: 0, max: 5 },
     reviewCount: { type: Number, default: 0 },
-    isApproved: { type: Boolean, default: false },
-    // Tri-state review status — isApproved alone can't distinguish "never
-    // reviewed" from "reviewed and rejected" (both are isApproved: false).
-    // Kept in sync with isApproved going forward: 'approved' <-> true,
-    // 'pending'/'rejected' <-> false. isApproved itself is left in place
-    // unchanged since public.controller.js's listing queries depend on it.
-    approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    // Subscription (isListingEnabled) is the only pre-listing gate now —
+    // vendors go live automatically. isApproved/approvalStatus default to
+    // true/'approved' and only get flipped false/'rejected' as a post-hoc
+    // admin takedown of an already-live vendor (bad actor, policy violation,
+    // etc.), not as a review queue a new vendor waits in. Both fields are
+    // left in place unchanged since public.controller.js's listing queries
+    // still check them — that's what makes the takedown actually work.
+    isApproved: { type: Boolean, default: true },
+    approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved' },
     reviewedAt: { type: Date },
     rejectionReason: { type: String, default: '' },
     isListingEnabled: { type: Boolean, default: false },
