@@ -13,6 +13,17 @@ const loginRules = [
   body('password').notEmpty().withMessage('Password is required'),
 ];
 
+// Same normalizeEmail() as registerRules/loginRules — without this, the
+// homeowner OTP/enquiry path stored emails verbatim while vendor registration
+// normalized them (e.g. stripping Gmail's +tag addressing), letting one real
+// inbox create multiple homeowner accounts/leads via +alias variants and
+// bypass per-email assumptions elsewhere (OTP rate limits, duplicate-lead
+// checks). name/phone are intentionally left unvalidated here — sendOTP
+// already handles their absence, and this fix is scoped to email consistency.
+const sendOtpRules = [
+  body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
+];
+
 const otpRules = [
   body('userId').notEmpty().withMessage('userId is required'),
   body('otp')
@@ -25,4 +36,4 @@ const resetPasswordRules = [
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
 ];
 
-module.exports = { registerRules, loginRules, otpRules, resetPasswordRules };
+module.exports = { registerRules, loginRules, sendOtpRules, otpRules, resetPasswordRules };

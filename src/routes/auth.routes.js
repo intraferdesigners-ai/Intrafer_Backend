@@ -6,13 +6,13 @@ const {
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const { authLimiter, otpLimiter } = require('../middleware/rateLimiter');
-const { registerRules, loginRules, otpRules, resetPasswordRules } = require('../validators/auth.validator');
+const { registerRules, loginRules, sendOtpRules, otpRules, resetPasswordRules } = require('../validators/auth.validator');
 
 const router = express.Router();
 
 router.post('/register',   authLimiter, ...registerRules, validate, register);
 router.post('/login',      authLimiter, ...loginRules, validate, login);
-router.post('/send-otp',   otpLimiter, sendOTP);
+router.post('/send-otp',   otpLimiter, ...sendOtpRules, validate, sendOTP);
 router.post('/verify-otp', otpLimiter, ...otpRules, validate, verifyOTP);
 router.post('/refresh',    refreshToken);
 router.post('/logout',     protect, logout);
