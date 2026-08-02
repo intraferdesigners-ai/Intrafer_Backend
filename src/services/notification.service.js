@@ -232,6 +232,45 @@ const handlers = {
     });
   },
 
+  VENDOR_REGISTERED: async ({ vendor, user }) => {
+    await Notification.create({
+      recipientId: user._id,
+      recipientRole: 'vendor',
+      type: 'vendor_registered',
+      title: 'Welcome to Intrafer',
+      message: `Your designer account for "${vendor.businessName}" has been created. Complete your profile to get started.`,
+      channels: ['in_app', 'email'],
+    });
+
+    // Registration has no opt-out preference to check yet (notificationPreferences
+    // only exists for events a vendor can already be receiving), so this always
+    // sends — same as sendVendorApprovedEmail, which also isn't gated.
+    await emailService.sendVendorWelcomeEmail({
+      to: user.email,
+      name: user.name,
+      businessName: vendor.businessName,
+    });
+  },
+
+  ONBOARDING_STALLED: async ({ vendor, user }) => {
+    await Notification.create({
+      recipientId: user._id,
+      recipientRole: 'vendor',
+      type: 'onboarding_stalled',
+      title: "You're almost live",
+      message: `"${vendor.businessName}"'s profile is complete — subscribe to a plan to activate your listing and start receiving leads.`,
+      channels: ['in_app', 'email'],
+    });
+
+    if (shouldSendEmail(user, 'onboardingStalled')) {
+      await emailService.sendOnboardingNudgeEmail({
+        to: user.email,
+        name: user.name,
+        businessName: vendor.businessName,
+      });
+    }
+  },
+
   PAYMENT_SUCCESS: async ({ vendor, subscription, vendorEmail }) => {
     const formattedDate = new Date(subscription.endDate).toLocaleDateString('en-IN');
 

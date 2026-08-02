@@ -37,7 +37,7 @@ const getVendors = catchAsync(async (req, res) => {
   const { skip, limit, page, totalPages } = paginate(req.query, total);
 
   const vendors = await Vendor.find(filter)
-    .populate('userId', 'name email phone isPhoneVerified')
+    .populate('userId', 'name email phone')
     .populate('subscriptionId', 'planName status endDate')
     .skip(skip)
     .limit(limit);
@@ -51,7 +51,7 @@ const getVendors = catchAsync(async (req, res) => {
 // past the default page-1 cutoff (10 vendors) once the DB grew past that.
 const getVendorById = catchAsync(async (req, res) => {
   const vendor = await Vendor.findById(req.params.id)
-    .populate('userId', 'name email phone isPhoneVerified')
+    .populate('userId', 'name email phone')
     .populate('subscriptionId', 'planName status endDate');
   if (!vendor) return error(res, 'Vendor not found.', 404);
   return success(res, { vendor });

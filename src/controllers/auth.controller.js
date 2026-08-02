@@ -6,6 +6,7 @@ const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const otpService = require('../services/otp.service');
 const emailService = require('../services/email.service');
+const notifService = require('../services/notification.service');
 
 const signAccessToken = (id) =>
   jwt.sign({ id }, process.env.JWT_ACCESS_SECRET, { expiresIn: process.env.JWT_ACCESS_EXPIRES });
@@ -30,7 +31,8 @@ const register = catchAsync(async (req, res) => {
   const user = await User.create({ name, email, phone, passwordHash: password, role });
 
   if (role === 'vendor') {
-    await Vendor.create({ userId: user._id, businessName: name });
+    const vendor = await Vendor.create({ userId: user._id, businessName: name });
+    notifService.dispatch('VENDOR_REGISTERED', { vendor, user });
   }
 
   return success(res, { id: user._id, name: user.name, email: user.email, role: user.role }, 'Registered successfully.', 201);
@@ -83,7 +85,7 @@ const sendOTP = catchAsync(async (req, res) => {
     console.error('[OTP] Email send failed:', err.message)
   );
 
-  return success(res, { userId: user._id }, 'OTP sent to your email and phone.');
+  return success(res, { userId: user._id }, 'OTP sent to your email.');
 });
 
 const verifyOTP = catchAsync(async (req, res) => {

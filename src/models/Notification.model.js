@@ -7,6 +7,8 @@ const notificationSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: [
+        'vendor_registered',
+        'onboarding_stalled',
         'lead_assigned',
         'lead_accepted',
         'lead_cancelled',

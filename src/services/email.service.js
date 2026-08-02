@@ -231,6 +231,46 @@ const sendSubscriptionExpiringEmail = async ({ to, vendorName, planName, formatt
   await transporter.sendMail({ from, to, subject, html });
 };
 
+const sendVendorWelcomeEmail = async ({ to, name, businessName }) => {
+  const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
+
+  const fallbackSubject = 'Welcome to Intrafer!';
+  const fallbackHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+        <h2 style="color:#B5541E;margin-bottom:8px;">Intrafer</h2>
+        <h3 style="color:#222;">Welcome, ${name}!</h3>
+        <p style="font-size:15px;color:#333;">Your designer account for <strong>${businessName}</strong> has been created.</p>
+        <p style="font-size:15px;color:#555;">Next, complete your business profile and subscribe to a plan to start receiving leads from homeowners.</p>
+        <p style="font-size:15px;color:#555;"><a href="https://intrafer.in/vendor/dashboard" style="color:#B5541E;">Go to your dashboard →</a></p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+        <p style="font-size:12px;color:#aaa;">Intrafer — India's interior designer marketplace.</p>
+      </div>
+    `;
+
+  const { subject, html } = await resolveTemplate('vendor_welcome', { name, businessName }, fallbackSubject, fallbackHtml);
+  await transporter.sendMail({ from, to, subject, html });
+};
+
+const sendOnboardingNudgeEmail = async ({ to, name, businessName }) => {
+  const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
+
+  const fallbackSubject = "You're almost live on Intrafer";
+  const fallbackHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+        <h2 style="color:#B5541E;margin-bottom:8px;">Intrafer</h2>
+        <h3 style="color:#222;">You're a couple of steps from going live</h3>
+        <p style="font-size:15px;color:#333;">Hi ${name},</p>
+        <p style="font-size:15px;color:#555;"><strong>${businessName}</strong>'s business profile is complete, but your listing isn't active yet — subscribe to a plan to start receiving leads from homeowners.</p>
+        <p style="font-size:15px;color:#555;"><a href="https://intrafer.in/vendor/dashboard/subscription" style="color:#B5541E;">View plans →</a></p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+        <p style="font-size:12px;color:#aaa;">Intrafer — India's interior designer marketplace.</p>
+      </div>
+    `;
+
+  const { subject, html } = await resolveTemplate('onboarding_stalled', { name, businessName }, fallbackSubject, fallbackHtml);
+  await transporter.sendMail({ from, to, subject, html });
+};
+
 const sendVendorApprovedEmail = async ({ to, name, businessName }) => {
   const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
 
@@ -367,6 +407,6 @@ const sendSupportTicketResolvedEmail = async ({ to, name, subject: ticketSubject
 
 module.exports = {
   sendOTPEmail, sendLeadAssignedEmail, sendLeadAcceptedEmail, sendLeadCancelledEmail, sendAppointmentConfirmedEmail, sendSubscriptionConfirmEmail,
-  sendVendorApprovedEmail, sendVendorRejectedEmail, sendPasswordResetEmail, sendSupportTicketConfirmationEmail, sendSubscriptionExpiringEmail,
+  sendVendorWelcomeEmail, sendOnboardingNudgeEmail, sendVendorApprovedEmail, sendVendorRejectedEmail, sendPasswordResetEmail, sendSupportTicketConfirmationEmail, sendSubscriptionExpiringEmail,
   sendSupportTicketResolvedEmail,
 };

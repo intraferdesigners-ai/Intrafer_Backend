@@ -41,6 +41,10 @@ const vendorSchema = new mongoose.Schema(
     rejectionReason: { type: String, default: '' },
     isListingEnabled: { type: Boolean, default: false },
     isFeatured: { type: Boolean, default: false },
+    // One-time-send guard for the stalled-onboarding nudge (see
+    // jobs/onboardingNudge.job.js) — set the first time the nudge fires so a
+    // vendor stuck in that state doesn't get emailed again every day.
+    onboardingNudgeSentAt: { type: Date, default: null },
     subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription' },
     totalLeads: { type: Number, default: 0 },
     wonLeads:     { type: Number, default: 0 },

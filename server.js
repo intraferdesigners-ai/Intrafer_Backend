@@ -4,6 +4,7 @@ const http = require('http');
 const connectDB = require('./src/config/db');
 const app = require('./src/app');
 const { startJobs } = require('./src/jobs/subscriptionExpiry.job');
+const { startJobs: startOnboardingNudgeJob } = require('./src/jobs/onboardingNudge.job');
 
 const PORT = process.env.PORT || 5000;
 
@@ -16,6 +17,7 @@ const start = async () => {
     console.log(`[SERVER] Intrafer API running on port ${PORT} in ${process.env.NODE_ENV} mode`);
     console.log(`[SERVER] Health check: http://localhost:${PORT}/health`);
     startJobs();
+    startOnboardingNudgeJob();
   });
 
   process.on('unhandledRejection', (err) => {
