@@ -18,6 +18,7 @@ const {
 const { getPublishedPosts, getPostBySlug } = require('../controllers/blog.controller');
 const { createTicket } = require('../controllers/supportTicket.controller');
 const { getPublicCities, getPublicCategories } = require('../controllers/taxonomy.controller');
+const { searchPlaces, searchLocalities } = require('../controllers/place.controller');
 
 const router = express.Router();
 
@@ -38,6 +39,8 @@ router.get('/blog/:slug',            getPostBySlug);
 router.post('/support-tickets',      createTicket);
 router.get('/cities',                getPublicCities);
 router.get('/categories',            getPublicCategories);
+router.get('/places',                     searchPlaces);
+router.get('/places/:placeId/localities', searchLocalities);
 router.get('/homepage-content',      getHomepageContent);
 router.get('/site-reviews',          getSiteReviews);
 router.get('/style-counts',          getStyleCounts);

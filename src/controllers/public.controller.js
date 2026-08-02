@@ -15,10 +15,22 @@ const SORT_MAP = {
 };
 
 const getVendors = catchAsync(async (req, res) => {
-  const { city, specialization, sort, featured } = req.query;
+  const { city, locality, specialization, sort, featured } = req.query;
 
   const filter = { isApproved: true, isListingEnabled: true };
-  if (city) filter['location.city'] = { $regex: new RegExp(city, 'i') };
+  // Vendors only store a free-text city (no locality field yet — see
+  // scripts/seedLocalities.js's Place/Locality dataset, which currently
+  // powers search suggestions only). Until vendor profiles capture their
+  // own locality, a locality filter can only be applied as an additional
+  // OR against that same free-text field, in case a vendor happened to
+  // enter a neighborhood name there.
+  if (city && locality) {
+    filter['location.city'] = { $in: [new RegExp(city, 'i'), new RegExp(locality, 'i')] };
+  } else if (city) {
+    filter['location.city'] = { $regex: new RegExp(city, 'i') };
+  } else if (locality) {
+    filter['location.city'] = { $regex: new RegExp(locality, 'i') };
+  }
   if (specialization) filter.specializations = { $in: [new RegExp(specialization, 'i')] };
   if (featured === 'true') filter.isFeatured = true;
 
