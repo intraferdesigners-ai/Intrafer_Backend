@@ -41,6 +41,49 @@ const searchPlaces = catchAsync(async (req, res) => {
     results = results.concat(substringMatches);
   }
 
+  // Fallback: many well-known towns (Manali, Noida, Mangalore...) aren't
+  // districts in their own right, so they only exist as Localities nested
+  // under their parent district's Place — a district-only search never
+  // finds them even though the data is there. Once Place matches run out,
+  // search Localities globally and surface the best few, each labeled with
+  // its parent place so it's clear it's a town within a larger district
+  // (e.g. "Manali" — "Kullu, Himachal Pradesh"). Selecting one stores the
+  // town's own name, which is more precise than forcing a pick of the
+  // (possibly unfamiliar) parent district anyway.
+  if (results.length < limit) {
+    const remaining = limit - results.length;
+    const placeIdsAlreadyShown = results.map((p) => p._id);
+
+    const localityPrefix = await Locality.find({ nameLower: { $regex: `^${escaped}` } })
+      .sort({ name: 1 })
+      .limit(remaining)
+      .populate('placeId', 'name state');
+
+    let localityMatches = localityPrefix;
+    if (localityMatches.length < remaining) {
+      const excludeLocalityIds = localityMatches.map((l) => l._id);
+      const localitySubstring = await Locality.find({
+        _id: { $nin: excludeLocalityIds },
+        nameLower: { $regex: escaped },
+      })
+        .sort({ name: 1 })
+        .limit(remaining - localityMatches.length)
+        .populate('placeId', 'name state');
+      localityMatches = localityMatches.concat(localitySubstring);
+    }
+
+    const localityAsPlace = localityMatches
+      .filter((l) => l.placeId && !placeIdsAlreadyShown.some((id) => id.equals(l.placeId._id)))
+      .map((l) => ({
+        _id: l._id,
+        name: l.name,
+        state: l.placeId ? `${l.placeId.name}, ${l.placeId.state}` : '',
+        isLocality: true,
+      }));
+
+    results = results.concat(localityAsPlace);
+  }
+
   return success(res, { places: results });
 });
 

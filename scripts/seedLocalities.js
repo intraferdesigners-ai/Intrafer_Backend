@@ -59,6 +59,21 @@ const ALIAS_MAP = new Map([
   ['Kozhikode', ['Calicut']],
   ['Mysuru', ['Mysore']],
   ['Varanasi', ['Banaras', 'Benares']],
+  ['Shivamogga', ['Shimoga']],
+  ['Tumakuru', ['Tumkur']],
+  ['Tiruchirappalli', ['Trichy']],
+  ['Belagavi', ['Belgaum']],
+  // The source dataset itself misspells this district name (missing the
+  // "n" -> "Visakhapatanam" instead of "Visakhapatnam") — searching the
+  // correctly-spelled name found nothing. Aliased to both the correct
+  // spelling and its common short form.
+  ['Visakhapatanam', ['Visakhapatnam', 'Vizag']],
+  // Navi Mumbai is a well-known planned city, but unlike Noida (which does
+  // appear verbatim as a Locality), no raw record's officename contains
+  // "Navi Mumbai" at all — it's split across constituent areas (Vashi,
+  // Nerul, Kharghar...) under Thane. Aliased to that parent district so the
+  // search isn't a dead end, rather than inventing a synthetic locality row.
+  ['Thane', ['Navi Mumbai']],
 ]);
 
 const normSpace = (s) => (s || '').replace(/\s+/g, ' ').trim();
