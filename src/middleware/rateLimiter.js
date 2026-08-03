@@ -6,6 +6,11 @@ const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests, please try again later.' },
+  // Silent token refresh fires once per expired access token regardless of
+  // how many other requests an active user's session has made in the same
+  // window — it shouldn't compete with that unrelated volume for the same
+  // per-IP budget and risk a spurious logout via a 429 on refresh.
+  skip: (req) => req.path === '/api/auth/refresh',
 });
 
 const otpLimiter = rateLimit({
