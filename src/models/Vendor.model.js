@@ -10,6 +10,24 @@ const serviceSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Additional cities/areas a vendor is willing to take on projects in — kept
+// separate from `location` below (the vendor's own studio/business address,
+// singular). A vendor's real office is one place; where they'll actually go
+// serve clients is a list. `placeId` links back to the Place taxonomy when
+// the city was resolved via pincode autofill or CitySelect, so the
+// vendor-coverage search (searchVendorCities in place.controller.js) can
+// match it directly — left unset for a freely-typed city with no match,
+// same "custom entry is fine" allowance CitySelect already has elsewhere.
+const serviceLocationSchema = new mongoose.Schema(
+  {
+    placeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Place' },
+    city: { type: String, required: true, trim: true },
+    state: { type: String, required: true, trim: true },
+    pincode: { type: String, trim: true },
+  },
+  { timestamps: true }
+);
+
 const vendorSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
@@ -24,6 +42,7 @@ const vendorSchema = new mongoose.Schema(
       lat: { type: Number },
       lng: { type: Number },
     },
+    serviceLocations: { type: [serviceLocationSchema], default: [] },
     profilePhoto:    { type: String, default: '' },
     portfolioImages: [{ type: String }],
     rating: { type: Number, default: 0, min: 0, max: 5 },
@@ -62,5 +81,6 @@ const vendorSchema = new mongoose.Schema(
 vendorSchema.index({ 'location.city': 1 });
 vendorSchema.index({ specializations: 1 });
 vendorSchema.index({ isApproved: 1, isListingEnabled: 1 });
+vendorSchema.index({ 'serviceLocations.placeId': 1 });
 
 module.exports = mongoose.model('Vendor', vendorSchema);

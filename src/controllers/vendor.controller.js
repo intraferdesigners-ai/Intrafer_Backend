@@ -13,13 +13,17 @@ const getProfile = catchAsync(async (req, res) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-  const { businessName, description, specializations, services, location, profilePhoto } = req.body;
+  const { businessName, description, specializations, services, location, serviceLocations, profilePhoto } = req.body;
   const updates = {};
   if (businessName !== undefined) updates.businessName = businessName;
   if (description !== undefined) updates.description = description;
   if (specializations !== undefined) updates.specializations = specializations;
   if (services !== undefined) updates.services = services;
   if (location !== undefined) updates.location = location;
+  // Whole-array replace, same convention as `services` above — the frontend
+  // holds the full list in local state and saves it wholesale, rather than
+  // this endpoint offering per-location add/remove semantics.
+  if (serviceLocations !== undefined) updates.serviceLocations = serviceLocations;
   // profilePhoto is a URL string returned by POST /api/upload/avatar, uploaded
   // separately as multipart form data — the frontend uploads the file first,
   // then PUTs the resulting URL here alongside the rest of the profile.

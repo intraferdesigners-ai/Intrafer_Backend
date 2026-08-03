@@ -1,5 +1,6 @@
 const Place = require('../models/Place.model');
 const Locality = require('../models/Locality.model');
+const Vendor = require('../models/Vendor.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 
@@ -152,4 +153,96 @@ const searchLocalities = catchAsync(async (req, res) => {
   return success(res, { localities: results });
 });
 
-module.exports = { searchPlaces, searchLocalities };
+// Pincode -> city/state autofill for the vendor profile's service-locations
+// form (see vendor.controller.js / the frontend profile page) — reuses the
+// same India Post-derived Locality data searchPlaces/searchLocalities are
+// built on, rather than calling any external geocoding API. A pincode maps
+// to several Locality rows (one per post office in that area), but they all
+// share the same parent Place, so the first match's placeId is authoritative
+// regardless of which specific post office record it happens to be.
+const lookupPincode = catchAsync(async (req, res) => {
+  const { pincode } = req.params;
+  if (!/^\d{6}$/.test(pincode)) return error(res, 'Enter a valid 6-digit pincode.', 400);
+
+  const locality = await Locality.findOne({ pincode }).populate('placeId', 'name state');
+  if (!locality?.placeId) return error(res, 'No matching city found for this pincode.', 404);
+
+  return success(res, {
+    placeId: locality.placeId._id,
+    city: locality.placeId.name,
+    state: locality.placeId.state,
+  });
+});
+
+// City search scoped to actual vendor coverage — used by the homepage/sticky
+// search widgets instead of searchPlaces' full ~740-place taxonomy, per the
+// "don't suggest a city with zero vendors" pivot. A city counts as "covered"
+// if at least one live (isApproved + isListingEnabled) vendor lists it in
+// serviceLocations; for a vendor with no serviceLocations entries yet (the
+// field is new), their single business-address city (`location.city`)
+// counts instead, so nobody drops out of search until they fill in the new
+// field. Same { places: [...] } response shape as searchPlaces, so
+// CitySelect can point at either interchangeably.
+const searchVendorCities = catchAsync(async (req, res) => {
+  const q = (req.query.q || '').trim().toLowerCase();
+  const limit = Math.min(parseInt(req.query.limit, 10) || 8, MAX_RESULTS);
+
+  const vendors = await Vendor.find({ isApproved: true, isListingEnabled: true })
+    .select('location.city serviceLocations');
+
+  const placeIds = new Set();
+  const cityNames = new Set();
+
+  for (const v of vendors) {
+    if (v.serviceLocations?.length) {
+      for (const loc of v.serviceLocations) {
+        if (loc.placeId) placeIds.add(loc.placeId.toString());
+        else if (loc.city) cityNames.add(loc.city.trim().toLowerCase());
+      }
+    } else if (v.location?.city) {
+      cityNames.add(v.location.city.trim().toLowerCase());
+    }
+  }
+
+  // Freely-typed city names (no placeId) have to be resolved against the
+  // taxonomy by name before they can be used as an `_id` filter below.
+  if (cityNames.size > 0) {
+    const namesArr = [...cityNames];
+    const nameMatches = await Place.find({
+      $or: [{ nameLower: { $in: namesArr } }, { aliases: { $in: namesArr } }],
+    }).select('_id');
+    nameMatches.forEach((p) => placeIds.add(p._id.toString()));
+  }
+
+  if (placeIds.size === 0) return success(res, { places: [] });
+  const coveredIds = [...placeIds];
+
+  if (!q) {
+    const places = await Place.find({ _id: { $in: coveredIds } }).sort({ name: 1 }).limit(limit);
+    return success(res, { places });
+  }
+
+  const escaped = escapeRegex(q);
+  const prefixMatches = await Place.find({
+    _id: { $in: coveredIds },
+    $or: [{ nameLower: { $regex: `^${escaped}` } }, { aliases: { $regex: `^${escaped}` } }],
+  })
+    .sort({ name: 1 })
+    .limit(limit);
+
+  let results = prefixMatches;
+  if (results.length < limit) {
+    const excludeIds = results.map((p) => p._id);
+    const substringMatches = await Place.find({
+      _id: { $in: coveredIds, $nin: excludeIds },
+      $or: [{ nameLower: { $regex: escaped } }, { aliases: { $regex: escaped } }],
+    })
+      .sort({ name: 1 })
+      .limit(limit - results.length);
+    results = results.concat(substringMatches);
+  }
+
+  return success(res, { places: results });
+});
+
+module.exports = { searchPlaces, searchLocalities, lookupPincode, searchVendorCities };

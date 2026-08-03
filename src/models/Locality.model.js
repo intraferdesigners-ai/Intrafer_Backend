@@ -23,5 +23,10 @@ localitySchema.index({ placeId: 1, nameLower: 1 });
 // e.g. "Manali" or "Noida", which are towns/localities, not districts).
 localitySchema.index({ nameLower: 1 });
 localitySchema.index({ aliases: 1 });
+// Vendor profile's pincode-autofill (place.controller.js's lookupPincode)
+// looks up a Locality by exact pincode to resolve its parent Place's
+// city/state — indexed since pincode isn't unique per-Locality but is
+// looked up on every keystroke-settled pincode entry.
+localitySchema.index({ pincode: 1 });
 
 module.exports = mongoose.model('Locality', localitySchema);
