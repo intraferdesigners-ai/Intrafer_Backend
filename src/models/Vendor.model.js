@@ -34,6 +34,7 @@ const vendorSchema = new mongoose.Schema(
     businessName: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
     specializations: [{ type: String }],
+    experienceYears: { type: Number, default: null },
     services: [serviceSchema],
     location: {
       city: { type: String, default: '' },

@@ -5,6 +5,10 @@ const updateProfileRules = [
   body('description').optional().trim(),
   body('profilePhoto').optional({ checkFalsy: true }).isURL().withMessage('profilePhoto must be a valid URL'),
   body('specializations').optional().isArray().withMessage('Specializations must be an array'),
+  body('experienceYears')
+    .optional({ checkFalsy: true })
+    .isInt({ min: 0, max: 80 })
+    .withMessage('Years of experience must be a whole number between 0 and 80'),
   body('services').optional().isArray().withMessage('Services must be an array'),
   body('services.*.name').trim().notEmpty().withMessage('Each service needs a name'),
   // checkFalsy so an empty string (not just an absent field) is treated as

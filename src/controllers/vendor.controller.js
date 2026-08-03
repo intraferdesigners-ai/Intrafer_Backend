@@ -13,11 +13,12 @@ const getProfile = catchAsync(async (req, res) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-  const { businessName, description, specializations, services, location, serviceLocations, profilePhoto } = req.body;
+  const { businessName, description, specializations, experienceYears, services, location, serviceLocations, profilePhoto } = req.body;
   const updates = {};
   if (businessName !== undefined) updates.businessName = businessName;
   if (description !== undefined) updates.description = description;
   if (specializations !== undefined) updates.specializations = specializations;
+  if (experienceYears !== undefined) updates.experienceYears = experienceYears === '' ? null : Number(experienceYears);
   if (services !== undefined) updates.services = services;
   if (location !== undefined) updates.location = location;
   // Whole-array replace, same convention as `services` above — the frontend
