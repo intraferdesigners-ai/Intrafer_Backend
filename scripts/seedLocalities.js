@@ -74,6 +74,27 @@ const ALIAS_MAP = new Map([
   // Nerul, Kharghar...) under Thane. Aliased to that parent district so the
   // search isn't a dead end, rather than inventing a synthetic locality row.
   ['Thane', ['Navi Mumbai']],
+  // Same situation as Navi Mumbai: Indirapuram (a major NCR residential hub)
+  // has no matching officename anywhere in the raw data under Ghaziabad —
+  // it's covered by post offices under other names (Vaishali SO, Shipra Sun
+  // City SO, etc.). Aliased to the parent district, plus the common
+  // misspelling "Indrapuram".
+  ['Ghaziabad', ['Indirapuram', 'Indrapuram']],
+  // Greater Noida *does* have raw officename rows (e.g. "Alpha Greater
+  // Noida SO", "Sec 01 Greater Noida SO"), so it does surface via the
+  // locality-fallback substring search below — but there's no row named
+  // exactly "Greater Noida" alone. Aliased to the parent district too so a
+  // plain "Greater Noida" search also resolves cleanly to a Place.
+  ['Gautam Buddha Nagar', ['Greater Noida']],
+]);
+
+// Misspellings/colloquial variants of a specific Locality's name — unlike
+// ALIAS_MAP above (which applies to an entire Place), these only make sense
+// for one particular locality, so they're keyed by "PLACE|STATE|LOCALITY"
+// (all upper-cased raw-ish values, locality name matched post-cleaning).
+const LOCALITY_ALIAS_MAP = new Map([
+  ['GHAZIABAD|UTTAR PRADESH|VAISHALI', ['Vashali']],
+  ['GHAZIABAD|UTTAR PRADESH|KAUSHAMBI', ['Koshambi']],
 ]);
 
 const normSpace = (s) => (s || '').replace(/\s+/g, ' ').trim();
@@ -175,11 +196,13 @@ async function seed() {
   for (const [key, place] of places) {
     const placeId = placeIdByKey.get(key);
     for (const loc of place.localities.values()) {
+      const aliasKey = `${key}|${loc.name.toUpperCase()}`;
       localityDocs.push({
         placeId,
         name: loc.name,
         nameLower: loc.name.toLowerCase(),
         pincode: loc.pincode,
+        aliases: (LOCALITY_ALIAS_MAP.get(aliasKey) || []).map((a) => a.toLowerCase()),
       });
     }
   }

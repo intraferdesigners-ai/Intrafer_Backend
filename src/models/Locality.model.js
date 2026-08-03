@@ -8,6 +8,11 @@ const localitySchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     nameLower: { type: String, required: true }, // lowercase, for indexed prefix search
     pincode: { type: String },
+    // Common misspellings/colloquial variants of this locality's name (e.g.
+    // "Vashali" for "Vaishali") — same purpose as Place.aliases, but scoped
+    // to a single locality since misspellings rarely apply to every locality
+    // sharing that word. See LOCALITY_ALIAS_MAP in scripts/seedLocalities.js.
+    aliases: { type: [String], default: [] },
   },
   { timestamps: true }
 );
@@ -17,5 +22,6 @@ localitySchema.index({ placeId: 1, nameLower: 1 });
 // (searches localities globally when a query doesn't match any Place —
 // e.g. "Manali" or "Noida", which are towns/localities, not districts).
 localitySchema.index({ nameLower: 1 });
+localitySchema.index({ aliases: 1 });
 
 module.exports = mongoose.model('Locality', localitySchema);

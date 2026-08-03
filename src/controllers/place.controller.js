@@ -7,6 +7,16 @@ const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const MAX_RESULTS = 20;
 
+// Towns that are colloquially "Delhi" to most people despite sitting in a
+// different state/district (Ghaziabad and Gautam Buddha Nagar, UP) — surfaced
+// alongside the Delhi Place itself so NCR satellite towns aren't a dead end
+// for someone who just searches "Delhi". Keyed by exact Place name.
+const DELHI_NCR_SATELLITES = ['Ghaziabad', 'Gautam Buddha Nagar'];
+// Minimum query length before the NCR satellites are appended, so a bare
+// "d"/"de" (which also prefix-matches Delhi) doesn't drag in Ghaziabad and
+// Gautam Buddha Nagar for every unrelated D-place search.
+const NCR_TRIGGER_MIN_LENGTH = 3;
+
 // Search-as-you-type over the ~740-place dataset (see scripts/seedLocalities.js).
 // Prefix matches (indexed, via nameLower) rank above substring matches, same
 // two-pass approach CitySelect used to do client-side against the old
@@ -41,6 +51,18 @@ const searchPlaces = catchAsync(async (req, res) => {
     results = results.concat(substringMatches);
   }
 
+  // "Delhi" colloquially includes its NCR satellite towns even though
+  // they're a different state/district — append those Places once "Delhi"
+  // itself is a plausible match, same visibility as a direct name hit.
+  if (q.length >= NCR_TRIGGER_MIN_LENGTH && 'delhi'.startsWith(q) && results.length < limit) {
+    const alreadyShownIds = results.map((p) => p._id);
+    const ncrPlaces = await Place.find({
+      name: { $in: DELHI_NCR_SATELLITES },
+      _id: { $nin: alreadyShownIds },
+    }).sort({ name: 1 });
+    results = results.concat(ncrPlaces.slice(0, limit - results.length));
+  }
+
   // Fallback: many well-known towns (Manali, Noida, Mangalore...) aren't
   // districts in their own right, so they only exist as Localities nested
   // under their parent district's Place — a district-only search never
@@ -54,7 +76,11 @@ const searchPlaces = catchAsync(async (req, res) => {
     const remaining = limit - results.length;
     const placeIdsAlreadyShown = results.map((p) => p._id);
 
-    const localityPrefix = await Locality.find({ nameLower: { $regex: `^${escaped}` } })
+    // Aliases (e.g. "Vashali" -> Vaishali) match at prefix rank too, same
+    // treatment as Place aliases above.
+    const localityPrefix = await Locality.find({
+      $or: [{ nameLower: { $regex: `^${escaped}` } }, { aliases: { $regex: `^${escaped}` } }],
+    })
       .sort({ name: 1 })
       .limit(remaining)
       .populate('placeId', 'name state');
@@ -64,7 +90,7 @@ const searchPlaces = catchAsync(async (req, res) => {
       const excludeLocalityIds = localityMatches.map((l) => l._id);
       const localitySubstring = await Locality.find({
         _id: { $nin: excludeLocalityIds },
-        nameLower: { $regex: escaped },
+        $or: [{ nameLower: { $regex: escaped } }, { aliases: { $regex: escaped } }],
       })
         .sort({ name: 1 })
         .limit(remaining - localityMatches.length)
@@ -103,7 +129,10 @@ const searchLocalities = catchAsync(async (req, res) => {
   }
 
   const escaped = escapeRegex(q);
-  const prefixMatches = await Locality.find({ placeId, nameLower: { $regex: `^${escaped}` } })
+  const prefixMatches = await Locality.find({
+    placeId,
+    $or: [{ nameLower: { $regex: `^${escaped}` } }, { aliases: { $regex: `^${escaped}` } }],
+  })
     .sort({ name: 1 })
     .limit(limit);
 
@@ -113,7 +142,7 @@ const searchLocalities = catchAsync(async (req, res) => {
     const substringMatches = await Locality.find({
       placeId,
       _id: { $nin: excludeIds },
-      nameLower: { $regex: escaped },
+      $or: [{ nameLower: { $regex: escaped } }, { aliases: { $regex: escaped } }],
     })
       .sort({ name: 1 })
       .limit(limit - results.length);
