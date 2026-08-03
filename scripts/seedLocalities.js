@@ -80,12 +80,27 @@ const ALIAS_MAP = new Map([
   // City SO, etc.). Aliased to the parent district, plus the common
   // misspelling "Indrapuram".
   ['Ghaziabad', ['Indirapuram', 'Indrapuram']],
-  // Greater Noida *does* have raw officename rows (e.g. "Alpha Greater
-  // Noida SO", "Sec 01 Greater Noida SO"), so it does surface via the
-  // locality-fallback substring search below — but there's no row named
-  // exactly "Greater Noida" alone. Aliased to the parent district too so a
-  // plain "Greater Noida" search also resolves cleanly to a Place.
-  ['Gautam Buddha Nagar', ['Greater Noida']],
+]);
+
+// A Place-level alias (ALIAS_MAP above) makes a search resolve straight to
+// the parent Place with no mention of the searched term anywhere in the
+// result — fine for Navi Mumbai/Indirapuram (no raw record contains the name
+// at all, so there's nothing truer to show), but wrong for a place that DOES
+// have real backing data under a slightly different label. Greater Noida
+// used to be handled as a Place alias on Gautam Buddha Nagar; that made
+// searching "Greater Noida" surface a bare "Gautam Buddha Nagar" result with
+// no "Greater Noida" text in it at all, which reads as if the search failed.
+// Renamed instead, below, to the real backing row.
+
+// Locality entries that should surface under a cleaner canonical name than
+// their raw officename — e.g. "Alpha Greater Noida SO" cleans to "Alpha
+// Greater Noida", but nobody searches "Alpha Greater Noida"; they search
+// "Greater Noida". Keyed by "PLACE|STATE|CLEANED_LOCALITY_NAME" (all
+// upper-cased, place name post-METRO_MERGE). If two raw rows would rename to
+// the same target, only the first inserted survives — same last-write-wins
+// behavior the locality-dedup Map below already has for exact-name clashes.
+const LOCALITY_RENAME_MAP = new Map([
+  ['GAUTAM BUDDHA NAGAR|UTTAR PRADESH|ALPHA GREATER NOIDA', 'Greater Noida'],
 ]);
 
 // Misspellings/colloquial variants of a specific Locality's name — unlike
@@ -147,7 +162,9 @@ function buildPlaces(records) {
     }
     const place = places.get(key);
 
-    const localityName = cleanLocalityName(r.officename);
+    const cleanedName = cleanLocalityName(r.officename);
+    const renameKey = `${key}|${cleanedName.toUpperCase()}`;
+    const localityName = LOCALITY_RENAME_MAP.get(renameKey) || cleanedName;
     const localityKey = localityName.toLowerCase();
     if (!place.localities.has(localityKey)) {
       place.localities.set(localityKey, { name: localityName, pincode: String(r.pincode || '').trim() });
