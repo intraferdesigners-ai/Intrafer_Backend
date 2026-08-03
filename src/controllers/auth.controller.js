@@ -22,8 +22,27 @@ const setRefreshCookie = (res, token) =>
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
+// Sends (or resends) an OTP to a user's email, shared by register() and
+// sendOTP() so there's exactly one place that pairs otpService.createAndSaveOTP
+// with the email dispatch.
+const sendOtpToUser = async (user) => {
+  const otp = await otpService.createAndSaveOTP(user._id);
+  emailService.sendOTPEmail({ to: user.email, name: user.name, otp }).catch((err) =>
+    console.error('[OTP] Email send failed:', err.message)
+  );
+};
+
 const register = catchAsync(async (req, res) => {
-  const { name, email, phone, password, role } = req.body;
+  const { name, email, phone, password } = req.body;
+  // `role` is never trusted verbatim from the client, no matter what
+  // registerRules' body('role').isIn(['user','vendor']) already enforces
+  // upstream — that validator is one layer that could someday be loosened
+  // or bypassed by a route that reuses this controller without it. Clamped
+  // to exactly these two values here too, so register() can never create an
+  // admin account under any circumstance. Real admin accounts only ever
+  // come from scripts/createAdmin.js or an authenticated super admin via
+  // POST /api/admin/admin-users (see admin.routes.js's isSuperAdmin gate).
+  const role = req.body.role === 'vendor' ? 'vendor' : 'user';
 
   const existing = await User.findOne({ $or: [{ email }, { phone }] });
   if (existing) return error(res, 'Email or phone already registered.', 409);
@@ -31,11 +50,16 @@ const register = catchAsync(async (req, res) => {
   const user = await User.create({ name, email, phone, passwordHash: password, role });
 
   if (role === 'vendor') {
-    const vendor = await Vendor.create({ userId: user._id, businessName: name });
-    notifService.dispatch('VENDOR_REGISTERED', { vendor, user });
+    await Vendor.create({ userId: user._id, businessName: name });
+    // The VENDOR_REGISTERED welcome notification/email fires from
+    // verifyOTP() instead, once the account is actually activated — sending
+    // it here would welcome an email address that hasn't been confirmed yet.
   }
 
-  return success(res, { id: user._id, name: user.name, email: user.email, role: user.role }, 'Registered successfully.', 201);
+  await sendOtpToUser(user);
+
+  return success(res, { userId: user._id, name: user.name, email: user.email, role: user.role },
+    'Almost there — enter the verification code we just emailed you.', 201);
 });
 
 const login = catchAsync(async (req, res) => {
@@ -44,6 +68,18 @@ const login = catchAsync(async (req, res) => {
   const user = await User.findOne({ email });
   const passwordMatch = user ? await user.comparePassword(password) : false;
   if (!user || !passwordMatch) return error(res, 'Invalid email or password.', 401);
+
+  // Accounts from register() start unverified and must complete the OTP step
+  // there before they can log in (see register()/verifyOTP()). Admin accounts
+  // (scripts/createAdmin.js, POST /api/admin/admin-users) are always created
+  // pre-verified, and scripts/grandfatherVerifiedUsers.js marks every account
+  // that existed before this gate shipped as verified too, so this only ever
+  // blocks a genuinely-incomplete new signup.
+  if (!user.isEmailVerified) {
+    return error(res,
+      'Please verify your email before logging in. Check your inbox for the verification code, or request a new one.',
+      403);
+  }
 
   const accessToken = signAccessToken(user._id);
   const refreshToken = signRefreshToken(user._id);
@@ -80,21 +116,30 @@ const sendOTP = catchAsync(async (req, res) => {
     });
   }
 
-  const otp = await otpService.createAndSaveOTP(user._id);
-  emailService.sendOTPEmail({ to: user.email, name: user.name, otp }).catch((err) =>
-    console.error('[OTP] Email send failed:', err.message)
-  );
+  await sendOtpToUser(user);
 
-  return success(res, { userId: user._id }, 'OTP sent to your email.');
+  return success(res, { userId: user._id, role: user.role }, 'OTP sent to your email.');
 });
 
 const verifyOTP = catchAsync(async (req, res) => {
   const { userId, otp } = req.body;
 
+  // Read before verifying so the vendor-welcome notification below can tell
+  // a first-time activation from a redundant re-verify of an already-active
+  // account (e.g. someone hits /send-otp again after already being verified)
+  // — otherwise it could re-fire the welcome email on every re-verification.
+  const wasAlreadyVerified = (await User.findById(userId).select('isEmailVerified'))?.isEmailVerified;
+
   const result = await otpService.verifyOTP(userId, otp);
   if (!result.valid) return error(res, result.message, 400);
 
   const user = await User.findById(userId);
+
+  if (!wasAlreadyVerified && user.role === 'vendor') {
+    const vendor = await Vendor.findOne({ userId: user._id });
+    if (vendor) notifService.dispatch('VENDOR_REGISTERED', { vendor, user });
+  }
+
   const accessToken = signAccessToken(user._id);
 
   return success(res, {
