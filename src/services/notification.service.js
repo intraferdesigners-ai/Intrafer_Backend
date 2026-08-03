@@ -95,32 +95,6 @@ const handlers = {
     }
   },
 
-  APPOINTMENT_CONFIRMED: async ({ user, vendor, lead }) => {
-    const formattedDateTime = new Date(lead.confirmedDateTime).toLocaleString('en-IN', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
-
-    await Notification.create({
-      recipientId: user._id,
-      recipientRole: 'user',
-      type: 'appointment_confirmed',
-      title: 'Consultation Appointment Confirmed',
-      message: `${vendor.businessName} confirmed your consultation for ${formattedDateTime}.`,
-      channels: ['in_app', 'email'],
-      metadata: { leadId: lead._id },
-    });
-
-    if (shouldSendEmail(user, 'appointmentConfirmed')) {
-      await emailService.sendAppointmentConfirmedEmail({
-        to: user.email,
-        userName: user.name,
-        vendorName: vendor.businessName,
-        formattedDateTime,
-      });
-    }
-  },
-
   NEW_MESSAGE: async ({ recipientId, recipientRole, senderName, lead }) => {
     await Notification.create({
       recipientId,

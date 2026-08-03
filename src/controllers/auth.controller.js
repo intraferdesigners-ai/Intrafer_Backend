@@ -210,7 +210,7 @@ const updateProfile = catchAsync(async (req, res) => {
   }, 'Profile updated.');
 });
 
-const NOTIFICATION_EVENT_KEYS = ['leadAssigned', 'leadAccepted', 'appointmentConfirmed', 'paymentSuccess'];
+const NOTIFICATION_EVENT_KEYS = ['leadAssigned', 'leadAccepted', 'paymentSuccess'];
 const NOTIFICATION_CHANNELS = ['email', 'whatsapp'];
 
 const updateNotificationPreferences = catchAsync(async (req, res) => {

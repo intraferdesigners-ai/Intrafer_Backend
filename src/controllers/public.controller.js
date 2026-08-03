@@ -117,57 +117,6 @@ const getSimilarVendors = catchAsync(async (req, res) => {
   return success(res, { vendors });
 });
 
-const getAvailableSlots = catchAsync(async (req, res) => {
-  const { date } = req.query;
-  if (!date) return error(res, 'A date query param (YYYY-MM-DD) is required.', 400);
-
-  const vendor = await Vendor.findOne({
-    _id: req.params.id,
-    isApproved: true,
-    isListingEnabled: true,
-  });
-  if (!vendor) return error(res, 'Vendor not found.', 404);
-
-  const dayStart = new Date(`${date}T00:00:00`);
-  if (Number.isNaN(dayStart.getTime())) return error(res, 'Invalid date.', 400);
-
-  const {
-    startTime = '10:00',
-    endTime = '18:00',
-    slotDurationMinutes = 60,
-  } = vendor.availability || {};
-
-  const [startH, startM] = startTime.split(':').map(Number);
-  const [endH, endM] = endTime.split(':').map(Number);
-  const startMinutes = startH * 60 + startM;
-  const endMinutes = endH * 60 + endM;
-
-  const candidates = [];
-  for (let m = startMinutes; m + slotDurationMinutes <= endMinutes; m += slotDurationMinutes) {
-    const slot = new Date(dayStart);
-    slot.setHours(Math.floor(m / 60), m % 60, 0, 0);
-    candidates.push(slot);
-  }
-
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
-
-  const bookedLeads = await Lead.find({
-    vendorId: vendor._id,
-    isConsultation: true,
-    confirmedDateTime: { $gte: dayStart, $lt: dayEnd },
-    status: { $nin: ['cancelled', 'lost'] },
-  }).select('confirmedDateTime');
-
-  const bookedTimes = new Set(bookedLeads.map((l) => l.confirmedDateTime.getTime()));
-
-  const slots = candidates
-    .filter((slot) => !bookedTimes.has(slot.getTime()))
-    .map((slot) => slot.toISOString());
-
-  return success(res, { slots });
-});
-
 const getGallery = catchAsync(async (req, res) => {
   const { room, style } = req.query;
 
@@ -332,4 +281,4 @@ const getStyleCounts = catchAsync(async (req, res) => {
   return success(res, { counts });
 });
 
-module.exports = { getVendors, getVendorById, getVendorsByIds, getVendorProjects, getProjectById, getSimilarVendors, getAvailableSlots, getGallery, getStats, getFeaturedProjects, getRelatedProjects, getHomepageContent, getSiteReviews, getStyleCounts };
+module.exports = { getVendors, getVendorById, getVendorsByIds, getVendorProjects, getProjectById, getSimilarVendors, getGallery, getStats, getFeaturedProjects, getRelatedProjects, getHomepageContent, getSiteReviews, getStyleCounts };

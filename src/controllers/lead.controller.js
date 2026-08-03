@@ -108,42 +108,6 @@ const acceptLead = catchAsync(async (req, res) => {
   return success(res, { lead }, 'Lead accepted. Contact details are now visible.');
 });
 
-const confirmAppointment = catchAsync(async (req, res) => {
-  const { dateTime } = req.body;
-  if (!dateTime) return error(res, 'dateTime is required.', 400);
-
-  const vendor = await Vendor.findOne({ userId: req.user._id });
-  if (!vendor) return error(res, 'Vendor profile not found.', 404);
-
-  const lead = await Lead.findOne({ _id: req.params.id, vendorId: vendor._id, isConsultation: true });
-  if (!lead) return error(res, 'Consultation lead not found.', 404);
-
-  lead.confirmedDateTime = new Date(dateTime);
-  if (lead.status === 'new') {
-    lead.status = 'accepted';
-    lead.contactRevealedAt = new Date();
-  }
-  lead.statusHistory.push({
-    status: lead.status,
-    changedBy: req.user._id,
-    note: `Appointment confirmed for ${lead.confirmedDateTime.toISOString()}`,
-  });
-  await lead.save();
-
-  await lead.populate('userId', 'name email phone');
-
-  // Fetched separately (rather than widening the populate above) so the
-  // notification-preference fields aren't leaked into the API response.
-  const notifyPrefs = await User.findById(lead.userId._id).select('emailNotifications notificationPreferences').lean();
-  notifService.dispatch('APPOINTMENT_CONFIRMED', {
-    user: { ...lead.userId.toObject(), ...notifyPrefs },
-    vendor,
-    lead,
-  });
-
-  return success(res, { lead }, 'Appointment confirmed.');
-});
-
 const updateLeadStatus = catchAsync(async (req, res) => {
   const { status } = req.body;
 
@@ -188,6 +152,6 @@ const cancelLead = catchAsync(async (req, res) => {
 });
 
 module.exports = {
-  createLead, getUserLeads, getVendorLeads, getLeadById, acceptLead, confirmAppointment, updateLeadStatus, cancelLead,
+  createLead, getUserLeads, getVendorLeads, getLeadById, acceptLead, updateLeadStatus, cancelLead,
   CONTACT_REVEALED_STATUSES,
 };

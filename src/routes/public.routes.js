@@ -6,7 +6,6 @@ const {
   getVendorProjects,
   getProjectById,
   getSimilarVendors,
-  getAvailableSlots,
   getGallery,
   getStats,
   getFeaturedProjects,
@@ -28,7 +27,6 @@ router.get('/vendors/compare',             getVendorsByIds);
 router.get('/vendors/:id',                 getVendorById);
 router.get('/vendors/:id/projects',        getVendorProjects);
 router.get('/vendors/:id/similar',         getSimilarVendors);
-router.get('/vendors/:id/available-slots', getAvailableSlots);
 router.get('/projects/:id',                getProjectById);
 router.get('/projects/:id/related',        getRelatedProjects);
 router.get('/featured-projects',     getFeaturedProjects);

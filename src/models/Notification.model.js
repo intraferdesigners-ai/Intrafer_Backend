@@ -12,7 +12,6 @@ const notificationSchema = new mongoose.Schema(
         'lead_assigned',
         'lead_accepted',
         'lead_cancelled',
-        'appointment_confirmed',
         'new_message',
         'support_ticket_created',
         'enquiry_created',

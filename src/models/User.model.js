@@ -29,7 +29,6 @@ const userSchema = new mongoose.Schema(
     notificationPreferences: {
       leadAssigned:         { email: { type: Boolean }, whatsapp: { type: Boolean } },
       leadAccepted:         { email: { type: Boolean }, whatsapp: { type: Boolean } },
-      appointmentConfirmed: { email: { type: Boolean }, whatsapp: { type: Boolean } },
       paymentSuccess:       { email: { type: Boolean }, whatsapp: { type: Boolean } },
     },
     // Only meaningful when role === 'admin'.
