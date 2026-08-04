@@ -158,7 +158,14 @@ const refreshToken = catchAsync(async (req, res) => {
   if (!user || user.refreshToken !== token) return error(res, 'Invalid refresh token.', 401);
 
   const accessToken = signAccessToken(user._id);
-  return success(res, { accessToken });
+  // `role` rides along so the frontend can re-sync its intrafer_role cookie
+  // on every silent refresh — that cookie is otherwise only ever written at
+  // login, so without this a long-lived session's role cookie can go stale
+  // or expire independently of the access token, leaving middleware.js (which
+  // trusts only the cookie) and the client's auth store (which can re-derive
+  // role from /auth/me using nothing but the access token) disagreeing about
+  // whether the user is still authenticated.
+  return success(res, { accessToken, role: user.role });
 });
 
 const logout = catchAsync(async (req, res) => {
