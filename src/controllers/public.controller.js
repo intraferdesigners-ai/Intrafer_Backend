@@ -54,7 +54,7 @@ const getVendorById = catchAsync(async (req, res) => {
     _id: req.params.id,
     isApproved: true,
     isListingEnabled: true,
-  }).populate('userId', 'name');
+  }).populate('userId', 'name phone email');
 
   if (!vendor) return error(res, 'Vendor not found.', 404);
   return success(res, { vendor });

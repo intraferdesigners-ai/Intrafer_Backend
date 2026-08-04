@@ -33,6 +33,15 @@ const vendorSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     businessName: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
+    // Public-facing business contact — distinct from the account's own
+    // email/phone (User.email/phone, used for login + account notices). A
+    // vendor may want customers reaching a different number/inbox than the
+    // one they log in with. Blank means "use the account's own email/phone"
+    // (see getProfile below and the WhatsApp button on the public vendor
+    // page), never a fallback baked into a default here, so it stays
+    // correct if the account's own email/phone later changes.
+    businessPhone: { type: String, default: '', trim: true },
+    businessEmail: { type: String, default: '', trim: true, lowercase: true },
     specializations: [{ type: String }],
     experienceYears: { type: Number, default: null },
     services: [serviceSchema],

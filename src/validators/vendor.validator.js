@@ -4,6 +4,8 @@ const updateProfileRules = [
   body('businessName').optional().trim().notEmpty().withMessage('Business name cannot be empty'),
   body('description').optional().trim(),
   body('profilePhoto').optional({ checkFalsy: true }).isURL().withMessage('profilePhoto must be a valid URL'),
+  body('businessPhone').optional({ checkFalsy: true }).matches(/^[6-9]\d{9}$/).withMessage('Valid 10-digit Indian mobile number required'),
+  body('businessEmail').optional({ checkFalsy: true }).isEmail().withMessage('businessEmail must be a valid email').normalizeEmail(),
   body('specializations').optional().isArray().withMessage('Specializations must be an array'),
   body('experienceYears')
     .optional({ checkFalsy: true })

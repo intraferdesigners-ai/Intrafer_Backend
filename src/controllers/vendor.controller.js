@@ -13,10 +13,12 @@ const getProfile = catchAsync(async (req, res) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-  const { businessName, description, specializations, experienceYears, services, location, serviceLocations, profilePhoto } = req.body;
+  const { businessName, description, specializations, experienceYears, services, location, serviceLocations, profilePhoto, businessPhone, businessEmail } = req.body;
   const updates = {};
   if (businessName !== undefined) updates.businessName = businessName;
   if (description !== undefined) updates.description = description;
+  if (businessPhone !== undefined) updates.businessPhone = businessPhone;
+  if (businessEmail !== undefined) updates.businessEmail = businessEmail;
   if (specializations !== undefined) updates.specializations = specializations;
   if (experienceYears !== undefined) updates.experienceYears = experienceYears === '' ? null : Number(experienceYears);
   if (services !== undefined) updates.services = services;
