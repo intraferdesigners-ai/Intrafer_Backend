@@ -14,11 +14,19 @@ const signAccessToken = (id) =>
 const signRefreshToken = (id) =>
   jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, { expiresIn: process.env.JWT_REFRESH_EXPIRES });
 
+// sameSite: 'lax', not 'strict' — this cookie is what POST /auth/refresh
+// relies on for every silent token refresh. Strict cookies are withheld by
+// the browser on the first request after a top-level cross-site redirect
+// back into the app (e.g. returning from a Razorpay netbanking/UPI bank
+// page), which made refresh fail as if the session were dead and forced a
+// logout mid-payment even though nothing was actually wrong. Lax still
+// withholds the cookie on cross-site POSTs, which is what actually matters
+// for CSRF protection on this state-changing endpoint.
 const setRefreshCookie = (res, token) =>
   res.cookie('refreshToken', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
