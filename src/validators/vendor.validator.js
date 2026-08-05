@@ -3,7 +3,11 @@ const { body } = require('express-validator');
 const updateProfileRules = [
   body('businessName').optional().trim().notEmpty().withMessage('Business name cannot be empty'),
   body('description').optional().trim(),
-  body('profilePhoto').optional({ checkFalsy: true }).isURL().withMessage('profilePhoto must be a valid URL'),
+  // require_tld: false — local dev's upload URLs point at http://localhost:<port>/uploads/...,
+  // which isURL()'s default options reject as invalid (no top-level domain).
+  // Production URLs (api.intrafer.in/...) have a real TLD and are unaffected.
+  body('profilePhoto').optional({ checkFalsy: true }).isURL({ require_tld: false }).withMessage('profilePhoto must be a valid URL'),
+  body('bannerImage').optional({ checkFalsy: true }).isURL({ require_tld: false }).withMessage('bannerImage must be a valid URL'),
   body('businessPhone').optional({ checkFalsy: true }).matches(/^[6-9]\d{9}$/).withMessage('Valid 10-digit Indian mobile number required'),
   body('businessEmail').optional({ checkFalsy: true }).isEmail().withMessage('businessEmail must be a valid email').normalizeEmail(),
   body('specializations').optional().isArray().withMessage('Specializations must be an array'),

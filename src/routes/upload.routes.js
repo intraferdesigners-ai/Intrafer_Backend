@@ -19,6 +19,18 @@ router.post(
 );
 
 router.post(
+  '/banner',
+  protect,
+  (req, res, next) => { req.uploadFolder = 'banners'; next(); },
+  upload.single('banner'),
+  (req, res) => {
+    if (!req.file) return error(res, 'No file uploaded.', 400);
+    const url = getFileUrl(req.file);
+    return success(res, { url }, 'Uploaded successfully.');
+  }
+);
+
+router.post(
   '/blog-cover',
   protect,
   rbac('admin'),

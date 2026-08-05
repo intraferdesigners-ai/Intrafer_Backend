@@ -13,7 +13,7 @@ const getProfile = catchAsync(async (req, res) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-  const { businessName, description, specializations, experienceYears, services, location, serviceLocations, profilePhoto, businessPhone, businessEmail } = req.body;
+  const { businessName, description, specializations, experienceYears, services, location, serviceLocations, profilePhoto, bannerImage, businessPhone, businessEmail } = req.body;
   const updates = {};
   if (businessName !== undefined) updates.businessName = businessName;
   if (description !== undefined) updates.description = description;
@@ -31,6 +31,8 @@ const updateProfile = catchAsync(async (req, res) => {
   // separately as multipart form data — the frontend uploads the file first,
   // then PUTs the resulting URL here alongside the rest of the profile.
   if (profilePhoto !== undefined) updates.profilePhoto = profilePhoto;
+  // Same upload-then-PUT convention as profilePhoto, via POST /api/upload/banner.
+  if (bannerImage !== undefined) updates.bannerImage = bannerImage;
 
   const vendor = await Vendor.findOneAndUpdate(
     { userId: req.user._id },

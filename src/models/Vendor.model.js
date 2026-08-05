@@ -54,6 +54,7 @@ const vendorSchema = new mongoose.Schema(
     },
     serviceLocations: { type: [serviceLocationSchema], default: [] },
     profilePhoto:    { type: String, default: '' },
+    bannerImage:     { type: String, default: '' },
     portfolioImages: [{ type: String }],
     rating: { type: Number, default: 0, min: 0, max: 5 },
     reviewCount: { type: Number, default: 0 },

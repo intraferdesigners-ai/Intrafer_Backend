@@ -56,7 +56,17 @@ app.post('/api/subscriptions/webhook', express.raw({ type: 'application/json' })
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+// These files (avatars, banners, portfolio photos) are meant to be publicly
+// embeddable on the frontend origin — helmet's default same-origin
+// Cross-Origin-Resource-Policy would otherwise have the browser silently
+// refuse to render them whenever API and frontend aren't on the exact same
+// origin (e.g. localhost:3000 embedding an image from localhost:5001 in
+// local dev, when no S3/Cloudinary is configured and uploads fall back to
+// local disk).
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, '..', 'uploads')));
 
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
