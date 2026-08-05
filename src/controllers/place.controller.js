@@ -1,6 +1,7 @@
 const Place = require('../models/Place.model');
 const Locality = require('../models/Locality.model');
 const Vendor = require('../models/Vendor.model');
+const Project = require('../models/Project.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 
@@ -181,8 +182,11 @@ const lookupPincode = catchAsync(async (req, res) => {
 // serviceLocations; for a vendor with no serviceLocations entries yet (the
 // field is new), their single business-address city (`location.city`)
 // counts instead, so nobody drops out of search until they fill in the new
-// field. Same { places: [...] } response shape as searchPlaces, so
-// CitySelect can point at either interchangeably.
+// field. Also covered: the (free-text) location of any of that vendor's
+// completed, published portfolio projects — a vendor's real project history
+// can span cities their serviceLocations/business address never mention.
+// Same { places: [...] } response shape as searchPlaces, so CitySelect can
+// point at either interchangeably.
 const searchVendorCities = catchAsync(async (req, res) => {
   const q = (req.query.q || '').trim().toLowerCase();
   const limit = Math.min(parseInt(req.query.limit, 10) || 8, MAX_RESULTS);
@@ -202,6 +206,19 @@ const searchVendorCities = catchAsync(async (req, res) => {
     } else if (v.location?.city) {
       cityNames.add(v.location.city.trim().toLowerCase());
     }
+  }
+
+  // A completed, published project's (free-text) location is covered too —
+  // scoped to these same live vendors, same as serviceLocations/location.city
+  // above, not every project in the DB.
+  const projects = await Project.find({
+    vendorId: { $in: vendors.map((v) => v._id) },
+    isPublished: true,
+    moderationStatus: 'approved',
+    location: { $ne: '' },
+  }).select('location');
+  for (const p of projects) {
+    if (p.location) cityNames.add(p.location.trim().toLowerCase());
   }
 
   // Freely-typed city names (no placeId) have to be resolved against the
