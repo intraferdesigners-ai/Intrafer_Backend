@@ -18,18 +18,20 @@ const getVendors = catchAsync(async (req, res) => {
   const { city, locality, specialization, sort, featured } = req.query;
 
   const filter = { isApproved: true, isListingEnabled: true };
-  // Vendors only store a free-text city (no locality field yet — see
-  // scripts/seedLocalities.js's Place/Locality dataset, which currently
-  // powers search suggestions only). Until vendor profiles capture their
-  // own locality, a locality filter can only be applied as an additional
-  // OR against that same free-text field, in case a vendor happened to
-  // enter a neighborhood name there.
-  if (city && locality) {
-    filter['location.city'] = { $in: [new RegExp(city, 'i'), new RegExp(locality, 'i')] };
-  } else if (city) {
-    filter['location.city'] = { $regex: new RegExp(city, 'i') };
-  } else if (locality) {
-    filter['location.city'] = { $regex: new RegExp(locality, 'i') };
+  // A city match must check BOTH a vendor's free-text business-address city
+  // (location.city) AND every city in their serviceLocations array — a
+  // vendor whose home base is Bengaluru but who also services Mysuru should
+  // still turn up when someone filters by Mysuru. This used to only ever
+  // check location.city, silently missing every serviceLocations-only match.
+  // `locality` (no dedicated field on Vendor yet) is folded into the same
+  // OR as an extra term, in case a vendor happened to enter a neighborhood
+  // name into one of these city fields.
+  if (city || locality) {
+    const terms = [city, locality].filter(Boolean).map((t) => new RegExp(t, 'i'));
+    filter.$or = [
+      { 'location.city': { $in: terms } },
+      { 'serviceLocations.city': { $in: terms } },
+    ];
   }
   if (specialization) filter.specializations = { $in: [new RegExp(specialization, 'i')] };
   if (featured === 'true') filter.isFeatured = true;
