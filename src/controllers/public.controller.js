@@ -36,6 +36,13 @@ const MAX_CARD_IMAGES = 6;
 // vendor with one 5-photo project sliding through several of them, while a
 // vendor with many projects still gets a photo from more of them before
 // its cap is reached.
+//
+// A brand-new vendor has zero published projects (moderation takes time,
+// or they just haven't added one yet) but may already have a bannerImage
+// or profilePhoto from onboarding — falling straight to the placeholder
+// icon in that case throws away a real photo the vendor already uploaded.
+// So when no project images are pooled, fall back to bannerImage, then
+// profilePhoto, before giving up to the placeholder.
 async function attachCardImages(vendors) {
   const ids = vendors.map((v) => v._id);
   if (ids.length === 0) return vendors;
@@ -73,7 +80,10 @@ async function attachCardImages(vendors) {
 
   return vendors.map((v) => {
     const obj = v.toObject ? v.toObject() : v;
-    obj.cardImages = byVendor.get(v._id.toString()) || [];
+    const pooled = byVendor.get(v._id.toString()) || [];
+    obj.cardImages = pooled.length > 0
+      ? pooled
+      : [obj.bannerImage, obj.profilePhoto].filter(Boolean);
     return obj;
   });
 }

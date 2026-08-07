@@ -325,7 +325,7 @@ const resetPassword = catchAsync(async (req, res) => {
   return success(res, {}, 'Password reset successfully. Please sign in with your new password.');
 });
 
-const SAVED_VENDOR_FIELDS = 'businessName location specializations portfolioImages profilePhoto rating reviewCount isApproved isFeatured';
+const SAVED_VENDOR_FIELDS = 'businessName location specializations portfolioImages bannerImage profilePhoto rating reviewCount isApproved isFeatured';
 
 const getSavedVendors = catchAsync(async (req, res) => {
   const user = await User.findById(req.user._id).populate('savedVendors', SAVED_VENDOR_FIELDS);
