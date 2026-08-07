@@ -14,18 +14,28 @@ const SORT_MAP = {
   name:    { businessName: 1 },
 };
 
-// Caps how many project-photos a single VendorCard pools for its
-// auto-sliding background — one representative image per published
-// project, not every photo from every project (that'd make the slideshow
-// absurdly long for a prolific vendor).
+// Caps how many project photos a single VendorCard pools for its
+// auto-sliding background — bounded so a prolific vendor's slideshow
+// doesn't run forever, not because any one project shouldn't contribute
+// more than one photo.
 const MAX_CARD_IMAGES = 6;
 
 // Vendor.portfolioImages exists on the schema but nothing ever writes to
-// it — a vendor's real photos live on their Project documents. Pools one
-// image per published/approved project (most recent first) for each vendor
-// in the list and attaches it as `cardImages`, so VendorCard's editorial
-// variant has something real to auto-slide through instead of falling
-// straight to the placeholder icon.
+// it — a vendor's real photos live on their Project documents. Pools up to
+// MAX_CARD_IMAGES photos per vendor from their published/approved projects
+// and attaches them as `cardImages`, so VendorCard's editorial variant has
+// something real to auto-slide through instead of falling straight to the
+// placeholder icon.
+//
+// Round-robins one photo per project per pass (most recently created
+// project first) rather than taking every photo from project #1 before
+// touching project #2 — most vendors here only have one or two published
+// projects, so pulling just images[0] from each would almost always cap
+// out at one pooled photo per vendor (nothing to slide through) even
+// though that single project has several photos. Round-robin keeps a
+// vendor with one 5-photo project sliding through several of them, while a
+// vendor with many projects still gets a photo from more of them before
+// its cap is reached.
 async function attachCardImages(vendors) {
   const ids = vendors.map((v) => v._id);
   if (ids.length === 0) return vendors;
@@ -39,12 +49,26 @@ async function attachCardImages(vendors) {
     .select('vendorId images')
     .sort({ createdAt: -1 });
 
-  const byVendor = new Map();
+  const projectsByVendor = new Map();
   for (const p of projects) {
     const key = p.vendorId.toString();
-    const list = byVendor.get(key) || [];
-    if (list.length < MAX_CARD_IMAGES) list.push(p.images[0]);
-    byVendor.set(key, list);
+    const list = projectsByVendor.get(key) || [];
+    list.push(p.images);
+    projectsByVendor.set(key, list);
+  }
+
+  const byVendor = new Map();
+  for (const [key, imageLists] of projectsByVendor) {
+    const pooled = [];
+    for (let round = 0; pooled.length < MAX_CARD_IMAGES; round++) {
+      const before = pooled.length;
+      for (const images of imageLists) {
+        if (images[round] !== undefined) pooled.push(images[round]);
+        if (pooled.length >= MAX_CARD_IMAGES) break;
+      }
+      if (pooled.length === before) break; // every project's images exhausted
+    }
+    byVendor.set(key, pooled);
   }
 
   return vendors.map((v) => {
