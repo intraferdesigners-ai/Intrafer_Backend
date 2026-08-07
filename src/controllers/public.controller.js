@@ -14,6 +14,46 @@ const SORT_MAP = {
   name:    { businessName: 1 },
 };
 
+// Caps how many project-photos a single VendorCard pools for its
+// auto-sliding background — one representative image per published
+// project, not every photo from every project (that'd make the slideshow
+// absurdly long for a prolific vendor).
+const MAX_CARD_IMAGES = 6;
+
+// Vendor.portfolioImages exists on the schema but nothing ever writes to
+// it — a vendor's real photos live on their Project documents. Pools one
+// image per published/approved project (most recent first) for each vendor
+// in the list and attaches it as `cardImages`, so VendorCard's editorial
+// variant has something real to auto-slide through instead of falling
+// straight to the placeholder icon.
+async function attachCardImages(vendors) {
+  const ids = vendors.map((v) => v._id);
+  if (ids.length === 0) return vendors;
+
+  const projects = await Project.find({
+    vendorId: { $in: ids },
+    isPublished: true,
+    moderationStatus: 'approved',
+    images: { $exists: true, $ne: [] },
+  })
+    .select('vendorId images')
+    .sort({ createdAt: -1 });
+
+  const byVendor = new Map();
+  for (const p of projects) {
+    const key = p.vendorId.toString();
+    const list = byVendor.get(key) || [];
+    if (list.length < MAX_CARD_IMAGES) list.push(p.images[0]);
+    byVendor.set(key, list);
+  }
+
+  return vendors.map((v) => {
+    const obj = v.toObject ? v.toObject() : v;
+    obj.cardImages = byVendor.get(v._id.toString()) || [];
+    return obj;
+  });
+}
+
 const getVendors = catchAsync(async (req, res) => {
   const { city, locality, specialization, sort, featured } = req.query;
 
@@ -48,7 +88,7 @@ const getVendors = catchAsync(async (req, res) => {
     .limit(limit)
     .populate('userId', 'name');
 
-  return success(res, { vendors, total, page, totalPages });
+  return success(res, { vendors: await attachCardImages(vendors), total, page, totalPages });
 });
 
 const getVendorById = catchAsync(async (req, res) => {
@@ -116,7 +156,7 @@ const getSimilarVendors = catchAsync(async (req, res) => {
     .limit(3)
     .populate('userId', 'name');
 
-  return success(res, { vendors });
+  return success(res, { vendors: await attachCardImages(vendors) });
 });
 
 const getGallery = catchAsync(async (req, res) => {
