@@ -178,14 +178,16 @@ const lookupPincode = catchAsync(async (req, res) => {
 // City search scoped to actual vendor coverage — used by the homepage/sticky
 // search widgets instead of searchPlaces' full ~740-place taxonomy, per the
 // "don't suggest a city with zero vendors" pivot. A city counts as "covered"
-// if at least one live (isApproved + isListingEnabled) vendor lists it in
-// serviceLocations; for a vendor with no serviceLocations entries yet (the
-// field is new), their single business-address city (`location.city`)
-// counts instead, so nobody drops out of search until they fill in the new
-// field. Also covered: the (free-text) location of any of that vendor's
-// completed, published portfolio projects — a vendor's real project history
-// can span cities their serviceLocations/business address never mention.
-// Same { places: [...] } response shape as searchPlaces, so CitySelect can
+// if at least one live (isApproved + isListingEnabled) vendor has it as
+// EITHER their business-address city (`location.city`) OR anywhere in
+// serviceLocations — a true union of both, not a fallback where having any
+// serviceLocations entries hides the business address (that bug meant a
+// vendor's own home-base city could silently vanish from this list the
+// moment they added a single service location elsewhere). Also covered:
+// the (free-text) location of any of that vendor's completed, published
+// portfolio projects — a vendor's real project history can span cities
+// their serviceLocations/business address never mention. Same
+// { places: [...] } response shape as searchPlaces, so CitySelect can
 // point at either interchangeably.
 const searchVendorCities = catchAsync(async (req, res) => {
   const q = (req.query.q || '').trim().toLowerCase();
@@ -198,13 +200,10 @@ const searchVendorCities = catchAsync(async (req, res) => {
   const cityNames = new Set();
 
   for (const v of vendors) {
-    if (v.serviceLocations?.length) {
-      for (const loc of v.serviceLocations) {
-        if (loc.placeId) placeIds.add(loc.placeId.toString());
-        else if (loc.city) cityNames.add(loc.city.trim().toLowerCase());
-      }
-    } else if (v.location?.city) {
-      cityNames.add(v.location.city.trim().toLowerCase());
+    if (v.location?.city) cityNames.add(v.location.city.trim().toLowerCase());
+    for (const loc of v.serviceLocations || []) {
+      if (loc.placeId) placeIds.add(loc.placeId.toString());
+      else if (loc.city) cityNames.add(loc.city.trim().toLowerCase());
     }
   }
 
