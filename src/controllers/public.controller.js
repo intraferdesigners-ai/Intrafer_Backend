@@ -39,10 +39,12 @@ const MAX_CARD_IMAGES = 6;
 //
 // A brand-new vendor has zero published projects (moderation takes time,
 // or they just haven't added one yet) but may already have a bannerImage
-// or profilePhoto from onboarding — falling straight to the placeholder
-// icon in that case throws away a real photo the vendor already uploaded.
-// So when no project images are pooled, fall back to bannerImage, then
-// profilePhoto, before giving up to the placeholder.
+// from onboarding — falling straight to the placeholder icon in that case
+// throws away a real photo the vendor already uploaded. So when no project
+// images are pooled, fall back to bannerImage alone before giving up to the
+// placeholder — not profilePhoto too: that's a personal headshot, not a
+// project/cover photo, and mixing it in here made a vendor's own face show
+// up as their card's sole image, which reads wrong on the public listing.
 async function attachCardImages(vendors) {
   const ids = vendors.map((v) => v._id);
   if (ids.length === 0) return vendors;
@@ -83,7 +85,7 @@ async function attachCardImages(vendors) {
     const pooled = byVendor.get(v._id.toString()) || [];
     obj.cardImages = pooled.length > 0
       ? pooled
-      : [obj.bannerImage, obj.profilePhoto].filter(Boolean);
+      : (obj.bannerImage ? [obj.bannerImage] : []);
     return obj;
   });
 }
