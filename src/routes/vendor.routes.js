@@ -8,6 +8,7 @@ const { protect } = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 const validate = require('../middleware/validate');
 const { upload } = require('../middleware/upload');
+const { uploadLimiter } = require('../middleware/rateLimiter');
 const { updateProfileRules } = require('../validators/vendor.validator');
 
 const router = express.Router();
@@ -21,8 +22,8 @@ router.put('/availability',    ...isVendor, updateAvailability);
 router.put('/projects/reorder', ...isVendor, reorderProjects);
 router.get('/projects',        ...isVendor, getProjects);
 router.get('/projects/:id',    ...isVendor, getProjectById);
-router.post('/projects',       ...isVendor, (req, res, next) => { req.uploadFolder = 'projects'; next(); }, upload.array('images', 10), createProject);
-router.put('/projects/:id',    ...isVendor, (req, res, next) => { req.uploadFolder = 'projects'; next(); }, upload.array('images', 10), updateProject);
+router.post('/projects',       ...isVendor, uploadLimiter, (req, res, next) => { req.uploadFolder = 'projects'; next(); }, upload.array('images', 10), createProject);
+router.put('/projects/:id',    ...isVendor, uploadLimiter, (req, res, next) => { req.uploadFolder = 'projects'; next(); }, upload.array('images', 10), updateProject);
 router.delete('/projects/:id', ...isVendor, deleteProject);
 router.get('/analytics',       ...isVendor, getAnalytics);
 router.get('/analytics/detail', ...isVendor, getAnalyticsDetail);
