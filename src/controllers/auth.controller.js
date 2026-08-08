@@ -149,6 +149,17 @@ const verifyOTP = catchAsync(async (req, res) => {
   }
 
   const accessToken = signAccessToken(user._id);
+  // Unlike login(), this path used to hand back an access token with no
+  // refresh token at all — every account activated via OTP (fresh signup, or
+  // the login page's "Email code" tab) would silently lose its session the
+  // moment that access token expired (JWT_ACCESS_EXPIRES), since the client's
+  // refresh interceptor had no refreshToken cookie to call /auth/refresh
+  // with and hard-redirected to login. Issuing and storing one here too puts
+  // this path in lockstep with login()'s session lifetime.
+  const refreshTokenValue = signRefreshToken(user._id);
+  user.refreshToken = refreshTokenValue;
+  await user.save({ validateBeforeSave: false });
+  setRefreshCookie(res, refreshTokenValue);
 
   return success(res, {
     accessToken,
