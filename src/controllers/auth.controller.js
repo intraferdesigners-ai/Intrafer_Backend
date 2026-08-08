@@ -7,6 +7,13 @@ const { success, error } = require('../utils/apiResponse');
 const otpService = require('../services/otp.service');
 const emailService = require('../services/email.service');
 const notifService = require('../services/notification.service');
+const { isBot } = require('../utils/honeypot');
+
+// A same-shaped fake id for a honeypot-triggered "success" response below —
+// looks like a real Mongo ObjectId (24 hex chars) without touching the
+// database, since nothing was actually created for a caller that tripped
+// the honeypot.
+const fakeObjectId = () => crypto.randomBytes(12).toString('hex');
 
 const signAccessToken = (id) =>
   jwt.sign({ id }, process.env.JWT_ACCESS_SECRET, { expiresIn: process.env.JWT_ACCESS_EXPIRES });
@@ -42,6 +49,16 @@ const sendOtpToUser = async (user) => {
 
 const register = catchAsync(async (req, res) => {
   const { name, email, phone, password } = req.body;
+
+  // Honeypot tripped — respond exactly like a real, successful registration
+  // (same shape, same message, same 201) without creating any account or
+  // sending any OTP, so a bot's script sees nothing to indicate it was
+  // caught. See src/utils/honeypot.js.
+  if (isBot(req)) {
+    return success(res, { userId: fakeObjectId(), name, email, role: req.body.role === 'vendor' ? 'vendor' : 'user' },
+      'Almost there — enter the verification code we just emailed you.', 201);
+  }
+
   // `role` is never trusted verbatim from the client, no matter what
   // registerRules' body('role').isIn(['user','vendor']) already enforces
   // upstream — that validator is one layer that could someday be loosened
@@ -112,6 +129,14 @@ const login = catchAsync(async (req, res) => {
 
 const sendOTP = catchAsync(async (req, res) => {
   const { email, phone, name } = req.body;
+
+  // Honeypot tripped — this is the shared entry point for the vendor-profile
+  // lead-capture overlay, the main enquiry form, QuickEnquiryModal, and the
+  // login page's email-code tab, all anonymous-reachable. Fake success, no
+  // account/OTP created. See src/utils/honeypot.js.
+  if (isBot(req)) {
+    return success(res, { userId: fakeObjectId(), role: 'user' }, 'OTP sent to your email.');
+  }
 
   let user = await User.findOne({ $or: [{ email }, { phone }] });
   if (!user) {

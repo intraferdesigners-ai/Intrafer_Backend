@@ -3,9 +3,18 @@ const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const notifService = require('../services/notification.service');
 const emailService = require('../services/email.service');
+const { isBot } = require('../utils/honeypot');
 
 const createTicket = catchAsync(async (req, res) => {
   const { name, email, phone, subject, message, userId } = req.body;
+
+  // Honeypot tripped — this is the public contact form, anonymous-reachable.
+  // Fake success, no ticket created, no notification/email dispatched. See
+  // src/utils/honeypot.js.
+  if (isBot(req)) {
+    return success(res, {}, "Message sent. We'll get back to you within 24 hours.", 201);
+  }
+
   if (!name || !email || !subject || !message) {
     return error(res, 'name, email, subject, and message are required.', 400);
   }
