@@ -1,26 +1,28 @@
 const Lead = require('../models/Lead.model');
 const Vendor = require('../models/Vendor.model');
+const User = require('../models/User.model');
 const Message = require('../models/Message.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const notifService = require('../services/notification.service');
 const { CONTACT_REVEALED_STATUSES } = require('./lead.controller');
 
-// Resolves whether req.user is a participant on this lead (the enquirer, or
-// the vendor it was assigned to) and, for vendors, hands back their Vendor doc
-// so callers don't have to look it up again.
+// Resolves whether req.user is a participant on this lead. Vendor/admin
+// only — a message thread is now a vendor+admin status-note thread with no
+// homeowner-side reply capability at all (guest enquirers have no login to
+// reply from in the first place; see enquiry.controller.js). See the
+// homeowner-removal plan, Phase 0/7. Pre-removal threads that do have a real
+// homeowner sender (senderRole: 'user') are unaffected — they still load via
+// getMessages below, just as read-only history now that 'user' can no
+// longer authenticate its way back into resolveParticipant.
 const resolveParticipant = async (lead, user) => {
-  if (user.role === 'user') {
-    // lead.userId is null for guest-submitted enquiries (see
-    // enquiry.controller.js) — no homeowner account is ever a participant
-    // on one of those, so this can never match rather than throwing on a
-    // null ref.
-    return lead.userId && lead.userId.equals(user._id) ? { role: 'user' } : null;
-  }
   if (user.role === 'vendor') {
     const vendor = await Vendor.findOne({ userId: user._id });
     if (!vendor || !lead.vendorId.equals(vendor._id)) return null;
     return { role: 'vendor', vendor };
+  }
+  if (user.role === 'admin') {
+    return { role: 'admin' };
   }
   return null;
 };
@@ -69,13 +71,21 @@ const sendMessage = catchAsync(async (req, res) => {
     text: text.trim(),
   });
 
-  const vendor = participant.vendor || await Vendor.findById(lead.vendorId);
-  const recipientId = req.user.role === 'user' ? vendor.userId : lead.userId;
-  const recipientRole = req.user.role === 'user' ? 'vendor' : 'user';
-
-  notifService.dispatch('NEW_MESSAGE', {
-    recipientId, recipientRole, senderName: req.user.name, lead,
-  });
+  // A vendor note is fanned out to every admin (same "notify all admins"
+  // pattern notification.service.js's SUPPORT_TICKET_CREATED already uses —
+  // there's no per-lead admin assignment to narrow this to). An admin note
+  // goes to the one vendor the lead is assigned to, same as before.
+  if (req.user.role === 'vendor') {
+    const admins = await User.find({ role: 'admin' }).select('_id');
+    admins.forEach((admin) => notifService.dispatch('NEW_MESSAGE', {
+      recipientId: admin._id, recipientRole: 'admin', senderName: req.user.name, lead,
+    }));
+  } else {
+    const vendor = participant.vendor || await Vendor.findById(lead.vendorId);
+    notifService.dispatch('NEW_MESSAGE', {
+      recipientId: vendor.userId, recipientRole: 'vendor', senderName: req.user.name, lead,
+    });
+  }
 
   return success(res, { message }, 'Message sent.', 201);
 });
