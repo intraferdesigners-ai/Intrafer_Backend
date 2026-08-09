@@ -294,7 +294,7 @@ const getHomepageContent = catchAsync(async (req, res) => {
 const REVIEW_POPULATE = [
   { path: 'userId', select: 'name' },
   { path: 'vendorId', select: 'businessName location.city specializations' },
-  { path: 'leadId', select: 'projectType city' },
+  { path: 'leadId', select: 'projectType city contactName' },
 ];
 
 // "Rahul Sharma" -> "Rahul S." — first name plus last-initial only, never the
@@ -311,7 +311,11 @@ const shapeReview = (r) => ({
   id: r._id,
   rating: r.rating,
   comment: r.comment,
-  userName: shapeReviewerName(r.userId?.name),
+  // leadId.contactName is the source for reviews submitted via the
+  // token-based flow (no User at all — see review.controller.js); userId
+  // stays the fallback for reviews from before that change. See the
+  // homeowner-removal plan, Phase 0/7.
+  userName: shapeReviewerName(r.leadId?.contactName || r.userId?.name),
   vendorName: r.vendorId?.businessName || '',
   vendorCity: r.leadId?.city || r.vendorId?.location?.city || '',
   projectType: r.leadId?.projectType || r.vendorId?.specializations?.[0] || 'Interior Design',

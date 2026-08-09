@@ -38,6 +38,13 @@ const leadSchema = new mongoose.Schema(
     isConsultation: { type: Boolean, default: false },
     preferredDate: { type: String, default: '' },
     confirmedDateTime: { type: Date, default: null },
+    // Set when status flips to 'won' (see updateLeadStatus) so the enquirer
+    // can leave a review via emailed link instead of a login session — guest
+    // enquirers have no account to log into. Same hash-and-expire shape as
+    // User's passwordResetToken/passwordResetExpires; select: false for the
+    // same reason. Cleared once the review is submitted (single-use).
+    reviewToken: { type: String, select: false },
+    reviewTokenExpiresAt: { type: Date, select: false },
   },
   { timestamps: true }
 );

@@ -352,8 +352,30 @@ const sendSupportTicketResolvedEmail = async ({ to, name, subject: ticketSubject
   await transporter.sendMail({ from, to, subject, html });
 };
 
+const sendReviewRequestEmail = async ({ to, name, vendorName, reviewUrl }) => {
+  const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
+
+  const fallbackSubject = `How was your experience with ${vendorName}?`;
+  const fallbackHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+        <h2 style="color:#1A56B0;margin-bottom:8px;">Intrafer</h2>
+        <p style="font-size:16px;color:#333;">Hi ${name},</p>
+        <p style="font-size:15px;color:#555;">Your project with <strong>${vendorName}</strong> is complete. Other homeowners rely on real reviews to choose a designer — would you take a minute to share how it went?</p>
+        <div style="text-align:center;margin:32px 0;">
+          <a href="${reviewUrl}" style="background:#1A56B0;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:bold;">Leave a review</a>
+        </div>
+        <p style="font-size:13px;color:#888;">This link is valid for 30 days and can only be used once.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+        <p style="font-size:12px;color:#aaa;">If you'd rather not, you can safely ignore this email.</p>
+      </div>
+    `;
+
+  const { subject, html } = await resolveTemplate('review_request', { name, vendorName, reviewUrl }, fallbackSubject, fallbackHtml);
+  await transporter.sendMail({ from, to, subject, html });
+};
+
 module.exports = {
-  sendOTPEmail, sendLeadAssignedEmail, sendLeadAcceptedEmail, sendLeadCancelledEmail, sendSubscriptionConfirmEmail,
+  sendOTPEmail, sendLeadAssignedEmail, sendLeadAcceptedEmail, sendSubscriptionConfirmEmail,
   sendVendorWelcomeEmail, sendOnboardingNudgeEmail, sendVendorApprovedEmail, sendVendorRejectedEmail, sendPasswordResetEmail, sendSupportTicketConfirmationEmail, sendSubscriptionExpiringEmail,
-  sendSupportTicketResolvedEmail,
+  sendSupportTicketResolvedEmail, sendReviewRequestEmail,
 };

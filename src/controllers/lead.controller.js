@@ -2,11 +2,14 @@ const mongoose = require('mongoose');
 const Lead = require('../models/Lead.model');
 const Vendor = require('../models/Vendor.model');
 const User = require('../models/User.model');
+const Review = require('../models/Review.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const generateEnquiryId = require('../utils/generateEnquiryId');
 const leadService = require('../services/lead.service');
 const notifService = require('../services/notification.service');
+const emailService = require('../services/email.service');
+const { generateReviewToken } = require('./review.controller');
 
 const CONTACT_REVEALED_STATUSES = ['accepted', 'contacted', 'quotation_sent', 'won', 'lost'];
 
@@ -132,13 +135,44 @@ const updateLeadStatus = catchAsync(async (req, res) => {
 
   lead.status = status;
   lead.statusHistory.push({ status, changedBy: req.user._id });
+
+  // Guarded by "no Review already exists" rather than "reviewToken isn't
+  // already set" — a lead can cycle through 'won' more than once (e.g.
+  // won -> lost -> won again on a status correction), and re-sending the
+  // invite email each time that happens is fine as long as it hasn't
+  // actually been reviewed yet. Once it has, stop for good.
+  let reviewRawToken = null;
+  if (status === 'won' && !(await Review.exists({ leadId: lead._id }))) {
+    reviewRawToken = generateReviewToken(lead);
+  }
+
   await lead.save();
 
   if (status === 'won') {
     await Vendor.findByIdAndUpdate(vendor._id, { $inc: { wonLeads: 1 } });
+
+    if (reviewRawToken && lead.contactEmail) {
+      const reviewUrl = `${process.env.CLIENT_URL}/review/${reviewRawToken}`;
+      emailService.sendReviewRequestEmail({
+        to: lead.contactEmail,
+        name: lead.contactName,
+        vendorName: vendor.businessName,
+        reviewUrl,
+      }).catch((err) => console.error('[ReviewInvite] Email send failed:', err.message));
+    }
   }
 
-  return success(res, { lead }, 'Status updated.');
+  // reviewToken/reviewTokenExpiresAt are `select: false` on the schema, but
+  // that only applies to fresh queries — this `lead` is the same in-memory
+  // document we just set them on, so they'd otherwise leak into the vendor's
+  // own response (hashed, not the raw token, but still a token-shaped field
+  // that should never come back over the API — same convention as
+  // passwordResetToken never appearing in an auth response).
+  const leadResponse = lead.toObject();
+  delete leadResponse.reviewToken;
+  delete leadResponse.reviewTokenExpiresAt;
+
+  return success(res, { lead: leadResponse }, 'Status updated.');
 });
 
 module.exports = {
