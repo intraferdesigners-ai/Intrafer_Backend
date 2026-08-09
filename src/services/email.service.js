@@ -89,9 +89,13 @@ const sendLeadAssignedEmail = async ({ to, vendorName, enquiryId, projectType, c
   await transporter.sendMail({ from, to, subject, html });
 };
 
+// Only ever sent for a legacy lead that still has a real homeowner User
+// (see notification.service.js's LEAD_ACCEPTED handler) — there's no
+// homeowner dashboard left to link to (see the homeowner-removal plan,
+// Phase 4), so this is a plain status update with no CTA button, not a
+// dead link to a route that no longer exists.
 const sendLeadAcceptedEmail = async ({ to, userName, vendorName, enquiryId, projectType }) => {
   const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
-  const dashboardUrl = `${process.env.CLIENT_URL}/user/dashboard/enquiries`;
 
   const fallbackSubject = `Your enquiry has been accepted — ${enquiryId}`;
   const fallbackHtml = `
@@ -101,9 +105,6 @@ const sendLeadAcceptedEmail = async ({ to, userName, vendorName, enquiryId, proj
         <p style="font-size:15px;color:#555;">
           Good news! <strong>${vendorName}</strong> has accepted your enquiry <strong>${enquiryId}</strong> for <strong>${projectType}</strong> and will contact you shortly.
         </p>
-        <div style="text-align:center;margin:32px 0;">
-          <a href="${dashboardUrl}" style="background:#1A56B0;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:bold;">View Enquiry</a>
-        </div>
         <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
         <p style="font-size:12px;color:#aaa;">You are receiving this because you submitted an enquiry on Intrafer.</p>
       </div>
@@ -111,36 +112,7 @@ const sendLeadAcceptedEmail = async ({ to, userName, vendorName, enquiryId, proj
 
   const { subject, html } = await resolveTemplate(
     'lead_accepted',
-    { userName, vendorName, enquiryId, projectType, dashboardUrl },
-    fallbackSubject,
-    fallbackHtml
-  );
-  await transporter.sendMail({ from, to, subject, html });
-};
-
-const sendLeadCancelledEmail = async ({ to, vendorName, userName, enquiryId, projectType }) => {
-  const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
-  const dashboardUrl = `${process.env.CLIENT_URL}/vendor/dashboard/leads`;
-
-  const fallbackSubject = `Enquiry cancelled — ${enquiryId}`;
-  const fallbackHtml = `
-      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
-        <h2 style="color:#1A56B0;margin-bottom:8px;">Intrafer</h2>
-        <p style="font-size:16px;color:#333;">Hi ${vendorName},</p>
-        <p style="font-size:15px;color:#555;">
-          <strong>${userName}</strong> has cancelled their enquiry <strong>${enquiryId}</strong> for <strong>${projectType}</strong>.
-        </p>
-        <div style="text-align:center;margin:32px 0;">
-          <a href="${dashboardUrl}" style="background:#1A56B0;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:bold;">View Leads</a>
-        </div>
-        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
-        <p style="font-size:12px;color:#aaa;">You are receiving this because you are a registered vendor on Intrafer.</p>
-      </div>
-    `;
-
-  const { subject, html } = await resolveTemplate(
-    'lead_cancelled',
-    { vendorName, userName, enquiryId, projectType, dashboardUrl },
+    { userName, vendorName, enquiryId, projectType },
     fallbackSubject,
     fallbackHtml
   );

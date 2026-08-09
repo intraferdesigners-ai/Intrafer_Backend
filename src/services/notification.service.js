@@ -26,8 +26,9 @@ const handlers = {
 
     // This notifies the VENDOR that a new lead came in, so it must resolve
     // the vendor's own account (not `user`, the homeowner who submitted the
-    // enquiry) for the email/phone — same lookup pattern as LEAD_CANCELLED
-    // below. `vendor` (a Vendor doc) has no email/phone fields itself.
+    // enquiry) for the email/phone — same lookup pattern as
+    // SUBSCRIPTION_EXPIRING below. `vendor` (a Vendor doc) has no email/phone
+    // fields itself.
     const vendorUser = await User.findById(vendor.userId).select('email phone emailNotifications notificationPreferences');
 
     if (vendorUser && shouldSendEmail(vendorUser, 'leadAssigned')) {
@@ -51,44 +52,19 @@ const handlers = {
     }
   },
 
+  // Only ever fires for a legacy lead that still has a real userId (see the
+  // `if (lead.userId)` guard around this dispatch in acceptLead) — guest
+  // enquiries have no User to accept on behalf of. The in-app Notification
+  // this used to also create is gone: there's no homeowner dashboard left
+  // to view it in (see the homeowner-removal plan, Phases 4-7), so it was
+  // pure orphaned data. The email stays — it's still a real, useful message
+  // for whichever legacy leads are still active.
   LEAD_ACCEPTED: async ({ user, vendor, lead }) => {
-    await Notification.create({
-      recipientId: user._id,
-      recipientRole: 'user',
-      type: 'lead_accepted',
-      title: 'Vendor Accepted Your Enquiry',
-      message: `${vendor.businessName} has accepted your enquiry ${lead.enquiryId} and will contact you shortly.`,
-      channels: ['in_app', 'email'],
-    });
-
     if (shouldSendEmail(user, 'leadAccepted')) {
       await emailService.sendLeadAcceptedEmail({
         to: user.email,
         userName: user.name,
         vendorName: vendor.businessName,
-        enquiryId: lead.enquiryId,
-        projectType: lead.projectType,
-      });
-    }
-  },
-
-  LEAD_CANCELLED: async ({ vendor, user, lead }) => {
-    await Notification.create({
-      recipientId: vendor.userId,
-      recipientRole: 'vendor',
-      type: 'lead_cancelled',
-      title: 'Enquiry Cancelled',
-      message: `${user.name} cancelled their enquiry ${lead.enquiryId} for ${lead.projectType}.`,
-      channels: ['in_app', 'email'],
-      metadata: { leadId: lead._id },
-    });
-
-    const vendorUser = await User.findById(vendor.userId).select('email emailNotifications notificationPreferences');
-    if (vendorUser && shouldSendEmail(vendorUser, 'leadCancelled')) {
-      await emailService.sendLeadCancelledEmail({
-        to: vendorUser.email,
-        vendorName: vendor.businessName,
-        userName: user.name,
         enquiryId: lead.enquiryId,
         projectType: lead.projectType,
       });
@@ -158,7 +134,7 @@ const handlers = {
 
     // Fetched separately (rather than trusting the job's own populate) so the
     // notification-preference fields are always fresh, same pattern as
-    // LEAD_CANCELLED above.
+    // LEAD_ASSIGNED above.
     const vendorUser = await User.findById(user._id).select('email emailNotifications notificationPreferences').lean();
     if (vendorUser && shouldSendEmail(vendorUser, 'subscriptionExpiring')) {
       await emailService.sendSubscriptionExpiringEmail({
@@ -191,18 +167,6 @@ const handlers = {
       message: `Your project "${project.title}" was rejected: ${project.rejectionReason}`,
       channels: ['in_app'],
       metadata: { projectId: project._id },
-    });
-  },
-
-  ENQUIRY_CREATED: async ({ user, vendor, lead }) => {
-    await Notification.create({
-      recipientId: user._id,
-      recipientRole: 'user',
-      type: 'enquiry_created',
-      title: 'Enquiry Submitted',
-      message: `Your enquiry ${lead.enquiryId} for ${lead.projectType} has been sent to ${vendor.businessName}.`,
-      channels: ['in_app'],
-      metadata: { leadId: lead._id },
     });
   },
 

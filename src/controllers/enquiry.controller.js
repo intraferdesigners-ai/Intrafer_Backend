@@ -104,10 +104,8 @@ const submitGuestEnquiry = catchAsync(async (req, res) => {
   await Vendor.findByIdAndUpdate(vendor._id, { $inc: { totalLeads: 1 } });
   await PendingEnquiryOtp.deleteOne({ _id: pending._id });
 
-  // No ENQUIRY_CREATED dispatch here — that notification targets a
-  // homeowner's in-app notification center (Notification.recipientId is a
-  // required User ref), and a guest enquiry has no User to notify. Vendor
-  // still gets notified below exactly as before.
+  // Only the vendor gets notified — there's no homeowner account left to
+  // notify a guest enquirer through (see the homeowner-removal plan).
   notifService.dispatch('LEAD_ASSIGNED', { vendor, lead });
 
   return success(res, { lead }, 'Enquiry submitted successfully.', 201);

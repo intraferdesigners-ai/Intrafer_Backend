@@ -1,6 +1,21 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+// role: 'user' is the old homeowner account role. Nothing creates new
+// 'user' rows anymore — homeowners now submit enquiries as guests, with
+// contact info living directly on Lead (contactName/contactEmail/
+// contactPhone) instead of a User account. See the "Removing the
+// Homeowner Role" plan (Phases 1-7) for the full removal.
+//
+// Existing 'user' rows are deliberately left in place, not purged. They're
+// still the historical author of pre-removal Review.userId and
+// Message.senderId records, so deleting them would blank out or break
+// real historical data. This was a conscious decision (Phase 0), not an
+// oversight — a future data-retention/purge pass is a separate, deliberate
+// call, not something to do as incidental cleanup here. Do not reintroduce
+// homeowner account creation (register(), sendOTP(), etc.) as a "fix" for
+// this enum value still existing; the enum stays only for these legacy
+// rows and for Mongoose validation on documents that already have it set.
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },

@@ -124,26 +124,26 @@ const login = catchAsync(async (req, res) => {
   });
 });
 
+// Only reachable today via a resend — vendor registration's own OTP-verify
+// step (auth/register/verify/page.jsx) and the login page's "resend
+// verification" action for an account that registered but never completed
+// it (see login()'s 403 branch below). Both always operate on an email that
+// register() already created a User for, so this never needs to create one
+// itself; the guest-enquiry OTP path (which used to reach this same
+// endpoint and did need to auto-create an account) has its own separate,
+// User-free flow now — see enquiry.controller.js and the homeowner-removal
+// plan, Phases 2-7.
 const sendOTP = catchAsync(async (req, res) => {
-  const { email, phone, name } = req.body;
+  const { email, phone } = req.body;
 
-  // Honeypot tripped — this is the shared entry point for the vendor-profile
-  // lead-capture overlay, the main enquiry form, QuickEnquiryModal, and the
-  // login page's email-code tab, all anonymous-reachable. Fake success, no
-  // account/OTP created. See src/utils/honeypot.js.
+  // Honeypot tripped — fake success, no OTP sent. See src/utils/honeypot.js.
   if (isBot(req)) {
-    return success(res, { userId: fakeObjectId(), role: 'user' }, 'OTP sent to your email.');
+    return success(res, { userId: fakeObjectId(), role: 'vendor' }, 'OTP sent to your email.');
   }
 
-  let user = await User.findOne({ $or: [{ email }, { phone }] });
+  const user = await User.findOne({ $or: [{ email }, { phone }] });
   if (!user) {
-    user = await User.create({
-      name,
-      email,
-      phone,
-      passwordHash: `PENDING_${Date.now()}`,
-      role: 'user',
-    });
+    return error(res, 'No account found for this email. Please register first.', 404);
   }
 
   await sendOtpToUser(user);
