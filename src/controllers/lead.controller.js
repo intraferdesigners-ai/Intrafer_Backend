@@ -23,6 +23,9 @@ const createLead = catchAsync(async (req, res) => {
     enquiryId: generateEnquiryId(),
     userId: req.user._id,
     vendorId: vendor._id,
+    contactName: req.user.name,
+    contactEmail: req.user.email,
+    contactPhone: req.user.phone,
     projectType,
     budget,
     city,
@@ -56,7 +59,7 @@ const getVendorLeads = catchAsync(async (req, res) => {
   if (req.query.status) filter.status = req.query.status;
 
   const leads = await Lead.find(filter)
-    .populate('userId', 'name')
+    .select('-contactEmail -contactPhone')
     .sort({ createdAt: -1 });
 
   return success(res, { leads });
@@ -75,11 +78,15 @@ const getLeadById = catchAsync(async (req, res) => {
     contactRevealed = isOwner && CONTACT_REVEALED_STATUSES.includes(lead.status);
   }
 
-  const userFields = contactRevealed ? 'name email phone' : 'name';
-  await lead.populate('userId', userFields);
   await lead.populate('vendorId', 'businessName location rating');
 
-  return success(res, { lead });
+  const leadObj = lead.toObject();
+  if (!contactRevealed) {
+    leadObj.contactEmail = '';
+    leadObj.contactPhone = '';
+  }
+
+  return success(res, { lead: leadObj });
 });
 
 const acceptLead = catchAsync(async (req, res) => {
@@ -124,8 +131,6 @@ const updateLeadStatus = catchAsync(async (req, res) => {
   if (status === 'won') {
     await Vendor.findByIdAndUpdate(vendor._id, { $inc: { wonLeads: 1 } });
   }
-
-  await lead.populate('userId', 'name email phone');
 
   return success(res, { lead }, 'Status updated.');
 });

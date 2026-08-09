@@ -116,7 +116,6 @@ const getLeads = catchAsync(async (req, res) => {
   const { skip, limit, page, totalPages } = paginate(req.query, total);
 
   const leads = await Lead.find(filter)
-    .populate('userId', 'name email phone')
     .populate('vendorId', 'businessName location')
     .skip(skip)
     .limit(limit)
