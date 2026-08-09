@@ -159,7 +159,7 @@ const getAnalytics = catchAsync(async (req, res) => {
 
   const [
     totalVendors,
-    totalUsers,
+    uniqueEnquirerEmails,
     totalLeads,
     activeSubscriptions,
     revenueResult,
@@ -170,7 +170,10 @@ const getAnalytics = catchAsync(async (req, res) => {
     pendingPortfolio,
   ] = await Promise.all([
     Vendor.countDocuments({ isApproved: true }),
-    User.countDocuments({ role: 'user' }),
+    // Distinct contactEmail values on Lead, not a User count — homeowner
+    // accounts no longer exist (see the homeowner-removal plan, Phases 1-5).
+    // Same person submitting multiple enquiries only counts once.
+    Lead.distinct('contactEmail', { contactEmail: { $ne: '' } }),
     Lead.countDocuments(),
     Subscription.countDocuments({ status: 'active' }),
     Subscription.aggregate([
@@ -195,10 +198,11 @@ const getAnalytics = catchAsync(async (req, res) => {
   ]);
 
   const totalRevenue = revenueResult[0]?.totalRevenue ?? 0;
+  const totalEnquirers = uniqueEnquirerEmails.length;
 
   return success(res, {
     totalVendors,
-    totalUsers,
+    totalEnquirers,
     totalLeads,
     activeSubscriptions,
     totalRevenue,
@@ -210,22 +214,30 @@ const getAnalytics = catchAsync(async (req, res) => {
   });
 });
 
-const getUsers = catchAsync(async (req, res) => {
-  const users = await User.find({ role: 'user' })
-    .select('-passwordHash -otp -refreshToken')
-    .sort({ createdAt: -1 });
+// Homeowner accounts no longer exist (see the homeowner-removal plan,
+// Phases 1-5) — this is a read-only directory of everyone who has ever
+// submitted an enquiry, sourced from Lead's own flat contact fields rather
+// than a User account. Deduped by contactEmail (normalized lowercase/trim
+// at the schema level, see Lead.model.js), since the same person can
+// legitimately submit multiple enquiries to different vendors over time.
+// No block/unblock action — there's no account left to block.
+const getEnquirers = catchAsync(async (req, res) => {
+  const enquirers = await Lead.aggregate([
+    { $match: { contactEmail: { $ne: '' } } },
+    { $sort: { createdAt: 1 } },
+    { $group: {
+      _id: '$contactEmail',
+      name: { $last: '$contactName' },
+      email: { $last: '$contactEmail' },
+      phone: { $last: '$contactPhone' },
+      leadCount: { $sum: 1 },
+      firstEnquiryAt: { $min: '$createdAt' },
+      lastEnquiryAt: { $max: '$createdAt' },
+    } },
+    { $sort: { lastEnquiryAt: -1 } },
+  ]);
 
-  return success(res, { users });
-});
-
-const toggleBlockUser = catchAsync(async (req, res) => {
-  const user = await User.findById(req.params.id);
-  if (!user) return error(res, 'User not found.', 404);
-  user.isBlocked = !user.isBlocked;
-  user.blockReason = req.body?.reason || '';
-  await user.save();
-  return success(res, { isBlocked: user.isBlocked },
-    user.isBlocked ? 'User blocked.' : 'User unblocked.');
+  return success(res, { enquirers });
 });
 
 const getAdminProfile = catchAsync(async (req, res) => {
@@ -606,8 +618,7 @@ module.exports = {
   getLeads,
   reassignLead,
   getAnalytics,
-  getUsers,
-  toggleBlockUser,
+  getEnquirers,
   getAdminProfile,
   updateAdminProfile,
   changePassword,

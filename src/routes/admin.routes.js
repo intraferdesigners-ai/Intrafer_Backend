@@ -2,7 +2,7 @@ const express = require('express');
 const {
   getVendors, getVendorById, approveVendor, toggleFeatured,
   getLeads, reassignLead,
-  getAnalytics, getUsers, toggleBlockUser,
+  getAnalytics, getEnquirers,
   getAdminProfile, updateAdminProfile, changePassword,
   getSettings, updateSettings,
   getAdminUsers, createAdminUser, updateAdminPermissions,
@@ -51,8 +51,12 @@ router.put('/vendors/:id/feature',    ...isAdmin, requirePermission('manage_vend
 router.get('/leads',                  ...isAdmin, requirePermission('manage_leads'), getLeads);
 router.put('/leads/:id/reassign',     ...isAdmin, requirePermission('manage_leads'), auditLog('Reassign lead'), reassignLead);
 router.get('/analytics',              ...isAdmin, requirePermission('view_analytics'), getAnalytics);
-router.get('/users',                  ...isAdmin, requirePermission('manage_users'), getUsers);
-router.put('/users/:id/block',        ...isAdmin, requirePermission('manage_users'), auditLog('Block/unblock user'), toggleBlockUser);
+// Route renamed (users -> enquirers) to match what this now actually shows,
+// but the permission key stays "manage_users" — that key already lives in
+// existing admin accounts' adminPermissions arrays, and renaming it would
+// silently revoke access for anyone currently granted it (see the
+// homeowner-removal plan, Phase 6).
+router.get('/enquirers',              ...isAdmin, requirePermission('manage_users'), getEnquirers);
 router.get('/profile',                ...isAdmin, getAdminProfile);
 router.put('/profile',                ...isAdmin, updateAdminProfile);
 router.put('/change-password',        ...isAdmin, changePassword);
