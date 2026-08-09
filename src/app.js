@@ -11,6 +11,7 @@ const { handleWebhook } = require('./controllers/subscription.controller');
 const authRoutes         = require('./routes/auth.routes');
 const publicRoutes       = require('./routes/public.routes');
 const leadRoutes         = require('./routes/lead.routes');
+const enquiryRoutes      = require('./routes/enquiry.routes');
 const vendorRoutes       = require('./routes/vendor.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
 const notificationRoutes = require('./routes/notification.routes');
@@ -88,6 +89,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth',          authRoutes);
 app.use('/api/public',        publicRoutes);
 app.use('/api/leads',         leadRoutes);
+app.use('/api/enquiry',       enquiryRoutes);
 app.use('/api/vendor',        vendorRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/notifications', notificationRoutes);

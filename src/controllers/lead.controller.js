@@ -101,16 +101,22 @@ const acceptLead = catchAsync(async (req, res) => {
   lead.statusHistory.push({ status: 'accepted', changedBy: req.user._id });
   await lead.save();
 
-  await lead.populate('userId', 'name email phone');
+  // Guest enquiries (see enquiry.controller.js) have no userId — nothing to
+  // notify, so this whole block is skipped rather than dereferencing a null
+  // ref. Notification.recipientId is a required User ref, so there'd be
+  // nowhere to send LEAD_ACCEPTED to anyway.
+  if (lead.userId) {
+    await lead.populate('userId', 'name email phone');
 
-  // Fetched separately (rather than widening the populate above) so the
-  // notification-preference fields aren't leaked into the API response.
-  const notifyPrefs = await User.findById(lead.userId._id).select('emailNotifications notificationPreferences').lean();
-  notifService.dispatch('LEAD_ACCEPTED', {
-    user: { ...lead.userId.toObject(), ...notifyPrefs },
-    vendor,
-    lead,
-  });
+    // Fetched separately (rather than widening the populate above) so the
+    // notification-preference fields aren't leaked into the API response.
+    const notifyPrefs = await User.findById(lead.userId._id).select('emailNotifications notificationPreferences').lean();
+    notifService.dispatch('LEAD_ACCEPTED', {
+      user: { ...lead.userId.toObject(), ...notifyPrefs },
+      vendor,
+      lead,
+    });
+  }
 
   return success(res, { lead }, 'Lead accepted. Contact details are now visible.');
 });

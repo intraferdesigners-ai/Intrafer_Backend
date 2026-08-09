@@ -11,7 +11,9 @@ exports.createReview = catchAsync(async (req, res) => {
 
   const lead = await Lead.findById(leadId);
   if (!lead) return error(res, 'Enquiry not found.', 404);
-  if (!lead.userId.equals(req.user._id)) return error(res, 'Not authorised.', 403);
+  // lead.userId is null for guest-submitted enquiries — no homeowner account
+  // was ever attached, so no one can review it under this flow.
+  if (!lead.userId || !lead.userId.equals(req.user._id)) return error(res, 'Not authorised.', 403);
   if (lead.status !== 'won') return error(res, 'You can only review completed projects.', 400);
 
   const existing = await Review.findOne({ leadId });

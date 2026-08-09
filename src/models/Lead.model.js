@@ -13,7 +13,12 @@ const statusHistorySchema = new mongoose.Schema(
 const leadSchema = new mongoose.Schema(
   {
     enquiryId: { type: String, required: true, unique: true },
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // No longer required — guest enquiries (see enquiry.controller.js) never
+    // create a User, so a Lead now stands on its own via the contactName/
+    // contactEmail/contactPhone fields below. Still set (and still the
+    // source of truth for messaging/review authorship) for leads submitted
+    // by a logged-in homeowner account.
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
     contactName: { type: String, default: '' },
     contactEmail: { type: String, default: '', lowercase: true, trim: true },

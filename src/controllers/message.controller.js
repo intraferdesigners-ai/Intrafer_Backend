@@ -11,7 +11,11 @@ const { CONTACT_REVEALED_STATUSES } = require('./lead.controller');
 // so callers don't have to look it up again.
 const resolveParticipant = async (lead, user) => {
   if (user.role === 'user') {
-    return lead.userId.equals(user._id) ? { role: 'user' } : null;
+    // lead.userId is null for guest-submitted enquiries (see
+    // enquiry.controller.js) — no homeowner account is ever a participant
+    // on one of those, so this can never match rather than throwing on a
+    // null ref.
+    return lead.userId && lead.userId.equals(user._id) ? { role: 'user' } : null;
   }
   if (user.role === 'vendor') {
     const vendor = await Vendor.findOne({ userId: user._id });
