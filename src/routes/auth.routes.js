@@ -1,7 +1,7 @@
 const express = require('express');
 const {
   register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, changePassword,
-  forgotPassword, resetPassword, getSavedVendors, saveVendor, unsaveVendor, updateNotificationPreferences,
+  forgotPassword, resetPassword, updateNotificationPreferences,
 } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -22,9 +22,5 @@ router.put('/notification-preferences', protect, updateNotificationPreferences);
 router.put('/change-password', protect, changePassword);
 router.post('/forgot-password', authLimiter, forgotPassword);
 router.post('/reset-password',  authLimiter, ...resetPasswordRules, validate, resetPassword);
-
-router.get('/saved-vendors',             protect, getSavedVendors);
-router.post('/saved-vendors/:vendorId',  protect, saveVendor);
-router.delete('/saved-vendors/:vendorId',protect, unsaveVendor);
 
 module.exports = router;

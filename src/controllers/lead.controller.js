@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Lead = require('../models/Lead.model');
 const Vendor = require('../models/Vendor.model');
 const User = require('../models/User.model');
@@ -43,14 +44,6 @@ const createLead = catchAsync(async (req, res) => {
   return success(res, { lead }, 'Enquiry submitted successfully.', 201);
 });
 
-const getUserLeads = catchAsync(async (req, res) => {
-  const leads = await Lead.find({ userId: req.user._id })
-    .populate('vendorId', 'businessName location rating')
-    .sort({ createdAt: -1 });
-
-  return success(res, { leads });
-});
-
 const getVendorLeads = catchAsync(async (req, res) => {
   const vendor = await Vendor.findOne({ userId: req.user._id });
   if (!vendor) return error(res, 'Vendor profile not found.', 404);
@@ -66,6 +59,14 @@ const getVendorLeads = catchAsync(async (req, res) => {
 });
 
 const getLeadById = catchAsync(async (req, res) => {
+  // Guards against a raw Mongoose CastError (500, leaking an internal
+  // message) for any non-ObjectId path segment — including "user", now that
+  // GET /leads/user was removed as its own route (see the homeowner-removal
+  // plan, Phase 5) and falls through to this one instead.
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return error(res, 'Lead not found.', 404);
+  }
+
   const lead = await Lead.findById(req.params.id);
   if (!lead) return error(res, 'Lead not found.', 404);
 
@@ -141,28 +142,7 @@ const updateLeadStatus = catchAsync(async (req, res) => {
   return success(res, { lead }, 'Status updated.');
 });
 
-const cancelLead = catchAsync(async (req, res) => {
-  const lead = await Lead.findOne({ _id: req.params.id, userId: req.user._id });
-  if (!lead) return error(res, 'Enquiry not found.', 404);
-
-  const CANCELLABLE = ['new', 'accepted'];
-  if (!CANCELLABLE.includes(lead.status)) {
-    return error(res, 'This enquiry cannot be cancelled at its current stage.', 400);
-  }
-
-  lead.status = 'cancelled';
-  lead.statusHistory.push({ status: 'cancelled', changedBy: req.user._id, note: req.body?.reason || '' });
-  await lead.save();
-
-  const vendor = await Vendor.findById(lead.vendorId);
-  if (vendor) {
-    notifService.dispatch('LEAD_CANCELLED', { vendor, user: req.user, lead });
-  }
-
-  return success(res, { lead }, 'Enquiry cancelled.');
-});
-
 module.exports = {
-  createLead, getUserLeads, getVendorLeads, getLeadById, acceptLead, updateLeadStatus, cancelLead,
+  createLead, getVendorLeads, getLeadById, acceptLead, updateLeadStatus,
   CONTACT_REVEALED_STATUSES,
 };

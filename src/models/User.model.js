@@ -15,7 +15,6 @@ const userSchema = new mongoose.Schema(
       expiresAt: { type: Date },
       attempts: { type: Number, default: 0 },
     },
-    savedVendors: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' }],
     refreshToken: { type: String },
     isBlocked: { type: Boolean, default: false },
     blockReason: { type: String, default: '' },

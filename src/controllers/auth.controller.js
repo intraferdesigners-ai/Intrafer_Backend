@@ -55,31 +55,28 @@ const register = catchAsync(async (req, res) => {
   // sending any OTP, so a bot's script sees nothing to indicate it was
   // caught. See src/utils/honeypot.js.
   if (isBot(req)) {
-    return success(res, { userId: fakeObjectId(), name, email, role: req.body.role === 'vendor' ? 'vendor' : 'user' },
+    return success(res, { userId: fakeObjectId(), name, email, role: 'vendor' },
       'Almost there — enter the verification code we just emailed you.', 201);
   }
 
-  // `role` is never trusted verbatim from the client, no matter what
-  // registerRules' body('role').isIn(['user','vendor']) already enforces
-  // upstream — that validator is one layer that could someday be loosened
-  // or bypassed by a route that reuses this controller without it. Clamped
-  // to exactly these two values here too, so register() can never create an
-  // admin account under any circumstance. Real admin accounts only ever
-  // come from scripts/createAdmin.js or an authenticated super admin via
-  // POST /api/admin/admin-users (see admin.routes.js's isSuperAdmin gate).
-  const role = req.body.role === 'vendor' ? 'vendor' : 'user';
+  // `role` is never read from the client at all, let alone trusted — the
+  // homeowner role has no self-registration surface anymore (see the
+  // homeowner-removal plan, Phase 4/5) and register() can never create an
+  // admin account under any circumstance, so this is unconditionally the
+  // only value it can produce. Real admin accounts only ever come from
+  // scripts/createAdmin.js or an authenticated super admin via POST
+  // /api/admin/admin-users (see admin.routes.js's isSuperAdmin gate).
+  const role = 'vendor';
 
   const existing = await User.findOne({ $or: [{ email }, { phone }] });
   if (existing) return error(res, 'Email or phone already registered.', 409);
 
   const user = await User.create({ name, email, phone, passwordHash: password, role });
 
-  if (role === 'vendor') {
-    await Vendor.create({ userId: user._id, businessName: name });
-    // The VENDOR_REGISTERED welcome notification/email fires from
-    // verifyOTP() instead, once the account is actually activated — sending
-    // it here would welcome an email address that hasn't been confirmed yet.
-  }
+  await Vendor.create({ userId: user._id, businessName: name });
+  // The VENDOR_REGISTERED welcome notification/email fires from verifyOTP()
+  // instead, once the account is actually activated — sending it here would
+  // welcome an email address that hasn't been confirmed yet.
 
   await sendOtpToUser(user);
 
@@ -361,26 +358,7 @@ const resetPassword = catchAsync(async (req, res) => {
   return success(res, {}, 'Password reset successfully. Please sign in with your new password.');
 });
 
-const SAVED_VENDOR_FIELDS = 'businessName location specializations portfolioImages bannerImage profilePhoto rating reviewCount isApproved isFeatured';
-
-const getSavedVendors = catchAsync(async (req, res) => {
-  const user = await User.findById(req.user._id).populate('savedVendors', SAVED_VENDOR_FIELDS);
-  return success(res, { vendors: user.savedVendors });
-});
-
-const saveVendor = catchAsync(async (req, res) => {
-  const { vendorId } = req.params;
-  await User.findByIdAndUpdate(req.user._id, { $addToSet: { savedVendors: vendorId } });
-  return success(res, {}, 'Vendor saved.');
-});
-
-const unsaveVendor = catchAsync(async (req, res) => {
-  const { vendorId } = req.params;
-  await User.findByIdAndUpdate(req.user._id, { $pull: { savedVendors: vendorId } });
-  return success(res, {}, 'Vendor removed from saved list.');
-});
-
 module.exports = {
   register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, changePassword,
-  forgotPassword, resetPassword, getSavedVendors, saveVendor, unsaveVendor, updateNotificationPreferences,
+  forgotPassword, resetPassword, updateNotificationPreferences,
 };

@@ -1,11 +1,13 @@
 const { body } = require('express-validator');
 
+// No role rule — register() no longer reads req.body.role at all (it's
+// unconditionally vendor now, see auth.controller.js), so validating a
+// field the controller ignores would just be misleading.
 const registerRules = [
   body('name').trim().notEmpty().withMessage('Name is required').isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
   body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
   body('phone').matches(/^[6-9]\d{9}$/).withMessage('Valid 10-digit Indian mobile number required'),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-  body('role').isIn(['user', 'vendor']).withMessage('Role must be user or vendor'),
 ];
 
 const loginRules = [
