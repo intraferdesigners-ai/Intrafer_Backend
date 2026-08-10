@@ -44,9 +44,28 @@ const sendOTPEmail = async ({ to, name, otp }) => {
   await transporter.sendMail({ from, to, subject, html });
 };
 
-const sendLeadAssignedEmail = async ({ to, vendorName, enquiryId, projectType, city, budget }) => {
+// Full contact + requirement details, not just the summary fields the
+// original version sent — the point is a vendor can act on a lead straight
+// from their inbox without ever opening the dashboard. Safe to include here:
+// this email only ever goes to the lead's own assigned vendor (see
+// notification.service.js's LEAD_ASSIGNED handler), who is always entitled
+// to their own lead's full contact info regardless of status — same
+// entitlement getLeadById/acceptLead already grant, just delivered by email
+// instead of an API response. leadId links straight to that lead's detail
+// page rather than the general leads list, since the email already gives
+// the vendor a reason to open one specific lead.
+const sendLeadAssignedEmail = async ({
+  to, vendorName, enquiryId, leadId, projectType, city, budget,
+  contactName, contactPhone, contactEmail, requirements, isConsultation, preferredDate,
+}) => {
   const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
-  const dashboardUrl = `${process.env.CLIENT_URL}/vendor/dashboard/leads`;
+  const dashboardUrl = `${process.env.CLIENT_URL}/vendor/dashboard/leads/${leadId}`;
+
+  const row = (label, value) => `
+          <tr>
+            <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">${label}</td>
+            <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">${value}</td>
+          </tr>`;
 
   const fallbackSubject = `New Lead Assigned — ${enquiryId}`;
   const fallbackHtml = `
@@ -55,22 +74,15 @@ const sendLeadAssignedEmail = async ({ to, vendorName, enquiryId, projectType, c
         <p style="font-size:16px;color:#333;">Hi ${vendorName},</p>
         <p style="font-size:15px;color:#555;">You have been assigned a new lead. Here are the details:</p>
         <table style="width:100%;border-collapse:collapse;margin:24px 0;font-size:14px;">
-          <tr style="background:#f5f8ff;">
-            <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">Enquiry ID</td>
-            <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">${enquiryId}</td>
-          </tr>
-          <tr>
-            <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">Project Type</td>
-            <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">${projectType}</td>
-          </tr>
-          <tr style="background:#f5f8ff;">
-            <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">City</td>
-            <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">${city}</td>
-          </tr>
-          <tr>
-            <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">Budget</td>
-            <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">${budget}</td>
-          </tr>
+          ${row('Enquiry ID', enquiryId)}
+          ${row('Name', contactName || '—')}
+          ${row('Phone', contactPhone || '—')}
+          ${row('Email', contactEmail || '—')}
+          ${row('Project Type', projectType || '—')}
+          ${row('City', city || '—')}
+          ${row('Budget', budget || '—')}
+          ${isConsultation ? row('Preferred date', preferredDate || '—') : ''}
+          ${row('Requirements', (requirements || '—').replace(/\n/g, '<br>'))}
         </table>
         <div style="text-align:center;margin:32px 0;">
           <a href="${dashboardUrl}" style="background:#1A56B0;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:bold;">View Lead</a>
@@ -82,7 +94,7 @@ const sendLeadAssignedEmail = async ({ to, vendorName, enquiryId, projectType, c
 
   const { subject, html } = await resolveTemplate(
     'lead_assigned',
-    { vendorName, enquiryId, projectType, city, budget, dashboardUrl },
+    { vendorName, enquiryId, projectType, city, budget, contactName, contactPhone, contactEmail, requirements, dashboardUrl },
     fallbackSubject,
     fallbackHtml
   );

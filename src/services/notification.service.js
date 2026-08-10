@@ -36,9 +36,16 @@ const handlers = {
         to: vendorUser.email,
         vendorName: vendor.businessName,
         enquiryId: lead.enquiryId,
+        leadId: lead._id,
         projectType: lead.projectType,
         city: lead.city,
         budget: lead.budget,
+        contactName: lead.contactName,
+        contactPhone: lead.contactPhone,
+        contactEmail: lead.contactEmail,
+        requirements: lead.requirements,
+        isConsultation: lead.isConsultation,
+        preferredDate: lead.preferredDate,
       });
     }
 

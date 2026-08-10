@@ -41,16 +41,32 @@ const TEMPLATES = [
             <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">{{enquiryId}}</td>
           </tr>
           <tr>
+            <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">Name</td>
+            <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">{{contactName}}</td>
+          </tr>
+          <tr style="background:#f5f8ff;">
+            <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">Phone</td>
+            <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">{{contactPhone}}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">Email</td>
+            <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">{{contactEmail}}</td>
+          </tr>
+          <tr style="background:#f5f8ff;">
             <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">Project Type</td>
             <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">{{projectType}}</td>
           </tr>
-          <tr style="background:#f5f8ff;">
+          <tr>
             <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">City</td>
             <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">{{city}}</td>
           </tr>
-          <tr>
+          <tr style="background:#f5f8ff;">
             <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">Budget</td>
             <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">{{budget}}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 14px;font-weight:bold;color:#444;border:1px solid #e0e7ef;">Requirements</td>
+            <td style="padding:10px 14px;color:#333;border:1px solid #e0e7ef;">{{requirements}}</td>
           </tr>
         </table>
         <div style="text-align:center;margin:32px 0;">
@@ -60,7 +76,7 @@ const TEMPLATES = [
         <p style="font-size:12px;color:#aaa;">You are receiving this because you are a registered vendor on Intrafer.</p>
       </div>
     `,
-    availableVariables: ['vendorName', 'enquiryId', 'projectType', 'city', 'budget', 'dashboardUrl'],
+    availableVariables: ['vendorName', 'enquiryId', 'projectType', 'city', 'budget', 'contactName', 'contactPhone', 'contactEmail', 'requirements', 'dashboardUrl'],
   },
   {
     key: 'subscription_confirm',
