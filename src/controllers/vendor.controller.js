@@ -187,7 +187,7 @@ const getAnalytics = catchAsync(async (req, res) => {
       new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     creditsUsed = await Lead.countDocuments({
       vendorId: vendor._id,
-      status: { $in: ['accepted', 'contacted', 'quotation_sent', 'won', 'lost'] },
+      status: { $in: ['accepted', 'won', 'lost'] },
       updatedAt: { $gte: periodStart },
     });
   }
@@ -203,7 +203,7 @@ const getAnalytics = catchAsync(async (req, res) => {
   });
 });
 
-const FUNNEL_STATUSES = ['new', 'contacted', 'quotation_sent', 'accepted', 'won', 'lost'];
+const FUNNEL_STATUSES = ['new', 'accepted', 'won', 'lost'];
 
 const getAnalyticsDetail = catchAsync(async (req, res) => {
   const vendor = await Vendor.findOne({ userId: req.user._id });

@@ -11,7 +11,7 @@ const notifService = require('../services/notification.service');
 const emailService = require('../services/email.service');
 const { generateReviewToken } = require('./review.controller');
 
-const CONTACT_REVEALED_STATUSES = ['accepted', 'contacted', 'quotation_sent', 'won', 'lost'];
+const CONTACT_REVEALED_STATUSES = ['accepted', 'won', 'lost'];
 
 const createLead = catchAsync(async (req, res) => {
   const { vendorId, projectType, budget, city, requirements, isConsultation, preferredDate } = req.body;

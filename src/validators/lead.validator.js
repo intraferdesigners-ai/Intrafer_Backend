@@ -10,8 +10,8 @@ const createLeadRules = [
 
 const updateStatusRules = [
   body('status')
-    .isIn(['contacted', 'quotation_sent', 'won', 'lost'])
-    .withMessage('Invalid status. Must be one of: contacted, quotation_sent, won, lost'),
+    .isIn(['won', 'lost'])
+    .withMessage('Invalid status. Must be one of: won, lost'),
 ];
 
 module.exports = { createLeadRules, updateStatusRules };

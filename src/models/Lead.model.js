@@ -29,7 +29,7 @@ const leadSchema = new mongoose.Schema(
     requirements: { type: String, default: '' },
     status: {
       type: String,
-      enum: ['new', 'accepted', 'contacted', 'quotation_sent', 'won', 'lost', 'cancelled'],
+      enum: ['new', 'accepted', 'won', 'lost', 'cancelled'],
       default: 'new',
     },
     contactRevealedAt: { type: Date },
