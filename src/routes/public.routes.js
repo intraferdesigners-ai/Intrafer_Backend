@@ -14,7 +14,6 @@ const {
   getSiteReviews,
   getStyleCounts,
 } = require('../controllers/public.controller');
-const { getPublishedPosts, getPostBySlug } = require('../controllers/blog.controller');
 const { createTicket } = require('../controllers/supportTicket.controller');
 const { getPublicCities, getPublicCategories } = require('../controllers/taxonomy.controller');
 const { searchPlaces, searchLocalities, lookupPincode, searchVendorCities } = require('../controllers/place.controller');
@@ -32,8 +31,6 @@ router.get('/projects/:id/related',        getRelatedProjects);
 router.get('/featured-projects',     getFeaturedProjects);
 router.get('/gallery',               getGallery);
 router.get('/stats',                 getStats);
-router.get('/blog',                  getPublishedPosts);
-router.get('/blog/:slug',            getPostBySlug);
 router.post('/support-tickets',      createTicket);
 router.get('/cities',                getPublicCities);
 router.get('/categories',            getPublicCategories);

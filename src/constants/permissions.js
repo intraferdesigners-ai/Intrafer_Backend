@@ -7,7 +7,6 @@ const PERMISSION_KEYS = [
   'manage_leads',
   'manage_users',
   'view_analytics',
-  'manage_blog',
   'manage_coupons',
   'manage_support',
   'manage_email_templates',

@@ -1,6 +1,5 @@
 const express = require('express');
 const { protect } = require('../middleware/auth');
-const rbac = require('../middleware/rbac');
 const { upload, getFileUrl } = require('../middleware/upload');
 const { success, error } = require('../utils/apiResponse');
 
@@ -23,19 +22,6 @@ router.post(
   protect,
   (req, res, next) => { req.uploadFolder = 'banners'; next(); },
   upload.single('banner'),
-  (req, res) => {
-    if (!req.file) return error(res, 'No file uploaded.', 400);
-    const url = getFileUrl(req.file);
-    return success(res, { url }, 'Uploaded successfully.');
-  }
-);
-
-router.post(
-  '/blog-cover',
-  protect,
-  rbac('admin'),
-  (req, res, next) => { req.uploadFolder = 'blog'; next(); },
-  upload.single('image'),
   (req, res) => {
     if (!req.file) return error(res, 'No file uploaded.', 400);
     const url = getFileUrl(req.file);

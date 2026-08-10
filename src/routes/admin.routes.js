@@ -13,9 +13,6 @@ const {
   toggleProjectFeatured,
 } = require('../controllers/admin.controller');
 const {
-  getAllPostsAdmin, createPost, updatePost, deletePost,
-} = require('../controllers/blog.controller');
-const {
   getAllCoupons, createCoupon, updateCoupon, deleteCoupon,
 } = require('../controllers/coupon.controller');
 const {
@@ -62,10 +59,6 @@ router.put('/profile',                ...isAdmin, updateAdminProfile);
 router.put('/change-password',        ...isAdmin, changePassword);
 router.get('/settings',               ...isAdmin, requirePermission('manage_settings'), getSettings);
 router.put('/settings',               ...isAdmin, requirePermission('manage_settings'), auditLog('Update site settings'), updateSettings);
-router.get('/blog',                   ...isAdmin, requirePermission('manage_blog'), getAllPostsAdmin);
-router.post('/blog',                  ...isAdmin, requirePermission('manage_blog'), auditLog('Create blog post'), createPost);
-router.put('/blog/:id',               ...isAdmin, requirePermission('manage_blog'), auditLog('Update blog post'), updatePost);
-router.delete('/blog/:id',            ...isAdmin, requirePermission('manage_blog'), auditLog('Delete blog post'), deletePost);
 router.get('/coupons',                ...isAdmin, requirePermission('manage_coupons'), getAllCoupons);
 router.post('/coupons',               ...isAdmin, requirePermission('manage_coupons'), auditLog('Create coupon'), createCoupon);
 router.put('/coupons/:id',            ...isAdmin, requirePermission('manage_coupons'), auditLog('Update coupon'), updateCoupon);
