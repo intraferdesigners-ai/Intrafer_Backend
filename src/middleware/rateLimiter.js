@@ -61,9 +61,21 @@ const uploadLimiter = rateLimit({
   keyGenerator: keyByUserOrIP,
 });
 
+// Shared budget across both the login OTP endpoints (auth.routes.js) and the
+// guest enquiry OTP endpoints (enquiry.routes.js) — /enquiry/submit is gated
+// by this too (it's the OTP-verify step), so one full request+verify cycle
+// already costs 2 of the budget. The old 5-per-10-min was tuned tight enough
+// that ~2.5 full cycles tripped it, which was firing on ordinary repeated
+// testing/use, not just abuse. Raised to a still-bounded but meaningfully
+// more generous ceiling: brute-forcing a specific OTP code is independently
+// capped by MAX_ATTEMPTS (3 wrong guesses locks that pendingId regardless of
+// this limiter — see enquiry.controller.js), so this limiter's real job is
+// bounding OTP-spam volume (cost/harassment via arbitrary phone/email), not
+// code-guessing — 15 per 15 min per IP is still a hard cap on that while
+// giving real use room to breathe.
 const otpLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 5,
+  windowMs: 15 * 60 * 1000,
+  max: 15,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many OTP requests. Please wait before trying again.' },
