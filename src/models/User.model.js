@@ -20,8 +20,22 @@ const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    phone: { type: String, required: true, unique: true, trim: true },
-    passwordHash: { type: String, required: true },
+    // sparse (not required) — a Google signup doesn't supply a phone number;
+    // it's collected afterward during onboarding instead (see
+    // auth.controller.js's googleAuth()). Still unique whenever it IS set,
+    // since register() still requires it up front for password signups.
+    phone: { type: String, unique: true, trim: true, sparse: true },
+    // Conditionally required — a Google-only account (no linked password)
+    // has nothing to hash. Still required for every password-based account,
+    // same as before.
+    passwordHash: { type: String, required: function () { return !this.googleId; } },
+    // Link key for Google Identity Services sign-in — set on first Google
+    // auth, whether that's a brand-new account or linking an existing
+    // password account by verified email (see googleAuth() in
+    // auth.controller.js). Kept as its own field rather than a single
+    // authProvider enum so a vendor can hold both a password AND a linked
+    // Google identity at once, rather than the two being mutually exclusive.
+    googleId: { type: String, unique: true, sparse: true },
     role: { type: String, enum: ['user', 'vendor', 'admin'], default: 'user' },
     isPhoneVerified: { type: Boolean, default: false },
     isEmailVerified: { type: Boolean, default: false },

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User.model');
 const Vendor = require('../models/Vendor.model');
 const catchAsync = require('../utils/catchAsync');
@@ -8,6 +9,12 @@ const otpService = require('../services/otp.service');
 const emailService = require('../services/email.service');
 const notifService = require('../services/notification.service');
 const { isBot } = require('../utils/honeypot');
+
+// Google Identity Services ID-token flow — the client posts a signed
+// credential it got directly from Google, and this verifies it server-side
+// against our own client ID. No client secret, no callback route (see the
+// Google OAuth Enablement plan, §02).
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // A same-shaped fake id for a honeypot-triggered "success" response below —
 // looks like a real Mongo ObjectId (24 hex chars) without touching the
@@ -122,6 +129,107 @@ const login = catchAsync(async (req, res) => {
     accessToken,
     user: userPayload,
   });
+});
+
+// Single endpoint for both Google signup and Google sign-in — `intent` is a
+// UX branch only, never a security boundary (see below). Vendor accounts
+// only: this can never create, link, or authenticate an admin account (§04
+// of the plan), enforced as a role check here in the backend itself, not by
+// hiding a button in the UI — a direct/forged API call hits the identical
+// check.
+const googleAuth = catchAsync(async (req, res) => {
+  const { credential, intent } = req.body;
+
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    return error(res, 'Google sign-in is not configured.', 503);
+  }
+
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    payload = ticket.getPayload();
+  } catch (err) {
+    return error(res, 'Invalid or expired Google credential.', 401);
+  }
+
+  // An unverified Google email can't prove account ownership — reject
+  // before it's ever used to look up or create anything.
+  if (!payload?.email_verified) {
+    return error(res, 'Your Google email is not verified.', 401);
+  }
+
+  const email = payload.email.toLowerCase();
+  const googleId = payload.sub;
+
+  let user = await User.findOne({ email });
+
+  // Admin lockdown. Runs immediately after the lookup and before any
+  // create/link/token logic, reading `role` on the matched account — not
+  // any client-supplied field, so no value of `credential` or `intent` can
+  // route around it. A generic message, not "this email is an admin", so
+  // the response itself doesn't leak whether the email belongs to an admin.
+  if (user?.role === 'admin') {
+    return error(res, 'This account uses password sign-in.', 403);
+  }
+
+  let isNewUser = false;
+
+  if (user) {
+    // Matched by verified email — sign-in, and link this Google identity if
+    // it isn't already. No password is touched or required; Google's
+    // email_verified claim is treated as equivalent proof of ownership to
+    // our own OTP round-trip, so this also activates an account that
+    // registered by password but never finished OTP verification.
+    let dirty = false;
+    if (!user.googleId) { user.googleId = googleId; dirty = true; }
+    if (!user.isEmailVerified) { user.isEmailVerified = true; dirty = true; }
+    if (dirty) await user.save({ validateBeforeSave: false });
+  } else {
+    // No account for this email. `intent` decides the UX, not whether an
+    // account gets created — but on the login page specifically (intent:
+    // 'login'), we do not silently provision one; a distinct NO_ACCOUNT
+    // response lets the frontend show "no account found, sign up instead"
+    // instead of a login click quietly becoming a signup (§03).
+    if (intent !== 'signup') {
+      return error(res, 'No account found for this email. Please sign up instead.', 404, { code: 'NO_ACCOUNT' });
+    }
+
+    // `role` is hardcoded here, never read from the token or the request
+    // body — identical pattern to register()'s `const role = 'vendor'`.
+    // Even a forged `intent: 'signup'` can only ever produce a vendor
+    // account. `phone` is intentionally omitted — Google doesn't supply
+    // one; it's collected afterward during onboarding (User.model.js's
+    // `phone` is sparse, not required, for exactly this case).
+    user = await User.create({
+      name: payload.name || payload.email.split('@')[0],
+      email,
+      googleId,
+      isEmailVerified: true,
+      role: 'vendor',
+    });
+    await Vendor.create({ userId: user._id, businessName: user.name });
+    isNewUser = true;
+  }
+
+  if (isNewUser) {
+    const vendor = await Vendor.findOne({ userId: user._id });
+    if (vendor) notifService.dispatch('VENDOR_REGISTERED', { vendor, user });
+  }
+
+  const accessToken = signAccessToken(user._id);
+  const refreshTokenValue = signRefreshToken(user._id);
+  user.refreshToken = refreshTokenValue;
+  await user.save({ validateBeforeSave: false });
+  setRefreshCookie(res, refreshTokenValue);
+
+  const userPayload = { id: user._id, name: user.name, email: user.email, role: user.role };
+  userPayload.emailNotifications = user.emailNotifications;
+
+  return success(res, { accessToken, user: userPayload, isNewUser },
+    isNewUser ? 'Account created.' : 'Signed in.');
 });
 
 // Only reachable today via a resend — vendor registration's own OTP-verify
@@ -359,6 +467,6 @@ const resetPassword = catchAsync(async (req, res) => {
 });
 
 module.exports = {
-  register, login, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, changePassword,
+  register, login, googleAuth, sendOTP, verifyOTP, refreshToken, logout, getMe, updateProfile, changePassword,
   forgotPassword, resetPassword, updateNotificationPreferences,
 };

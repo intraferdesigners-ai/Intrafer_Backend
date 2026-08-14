@@ -38,4 +38,14 @@ const resetPasswordRules = [
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
 ];
 
-module.exports = { registerRules, loginRules, sendOtpRules, otpRules, resetPasswordRules };
+// No role rule here either, same reasoning as registerRules — googleAuth()
+// never reads a role from the request, so there's nothing to validate.
+// `intent` is restricted to exactly these two values so the controller can
+// assume it's one of them by the time it's making the NO_ACCOUNT-vs-create
+// decision (see auth.controller.js).
+const googleAuthRules = [
+  body('credential').notEmpty().withMessage('Google credential is required'),
+  body('intent').isIn(['login', 'signup']).withMessage("intent must be 'login' or 'signup'"),
+];
+
+module.exports = { registerRules, loginRules, sendOtpRules, otpRules, resetPasswordRules, googleAuthRules };
