@@ -364,6 +364,36 @@ const sendSupportTicketResolvedEmail = async ({ to, name, subject: ticketSubject
   await transporter.sendMail({ from, to, subject, html });
 };
 
+// Sent once, only when an existing password-based account gets linked to
+// Google for the first time (see auth.controller.js's googleAuth()) — not
+// on every subsequent Google sign-in to an already-linked account. Support
+// contact convention (support@intrafer.in) matches what the frontend's own
+// privacy/terms pages already use.
+const sendGoogleAccountLinkedEmail = async ({ to, name, linkedAt }) => {
+  const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
+
+  const fallbackSubject = 'Your Intrafer account is now linked to Google';
+  const fallbackHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+        <h2 style="color:#1A56B0;margin-bottom:8px;">Intrafer</h2>
+        <p style="font-size:16px;color:#333;">Hi ${name},</p>
+        <p style="font-size:15px;color:#555;">
+          Your Intrafer account (<strong>${to}</strong>) was just linked to Google sign-in, on <strong>${linkedAt}</strong>. You can now sign in with either your password or "Continue with Google".
+        </p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+        <p style="font-size:13px;color:#888;">If this wasn't you, please contact us right away at <a href="mailto:support@intrafer.in" style="color:#1A56B0;">support@intrafer.in</a>.</p>
+      </div>
+    `;
+
+  const { subject, html } = await resolveTemplate(
+    'google_account_linked',
+    { name, to, linkedAt },
+    fallbackSubject,
+    fallbackHtml
+  );
+  await transporter.sendMail({ from, to, subject, html });
+};
+
 const sendReviewRequestEmail = async ({ to, name, vendorName, reviewUrl }) => {
   const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
 
@@ -389,5 +419,5 @@ const sendReviewRequestEmail = async ({ to, name, vendorName, reviewUrl }) => {
 module.exports = {
   sendOTPEmail, sendLeadAssignedEmail, sendLeadAcceptedEmail, sendSubscriptionConfirmEmail,
   sendVendorWelcomeEmail, sendOnboardingNudgeEmail, sendVendorApprovedEmail, sendVendorRejectedEmail, sendPasswordResetEmail, sendSupportTicketConfirmationEmail, sendSubscriptionExpiringEmail,
-  sendSupportTicketResolvedEmail, sendReviewRequestEmail,
+  sendSupportTicketResolvedEmail, sendReviewRequestEmail, sendGoogleAccountLinkedEmail,
 };

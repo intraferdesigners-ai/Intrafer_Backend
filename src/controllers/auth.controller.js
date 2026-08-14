@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User.model');
 const Vendor = require('../models/Vendor.model');
+const AuditLog = require('../models/AuditLog.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const otpService = require('../services/otp.service');
@@ -172,6 +173,24 @@ const googleAuth = catchAsync(async (req, res) => {
   // route around it. A generic message, not "this email is an admin", so
   // the response itself doesn't leak whether the email belongs to an admin.
   if (user?.role === 'admin') {
+    // Fire-and-forget, same convention as middleware/auditLog.js (never
+    // delays or can fail the response). Reused rather than that middleware
+    // itself — it's wired for an *authenticated admin's own* action
+    // (requires req.user, and explicitly skips on statusCode >= 400), the
+    // opposite of what's true here: an anonymous caller, rejected. `adminId`
+    // etc. identify the account that was targeted, not who performed the
+    // request — see the one-line clarification on the audit-logs page.
+    AuditLog.create({
+      adminId: user._id,
+      adminName: user.name,
+      adminEmail: user.email,
+      action: 'Rejected Google sign-in attempt (admin lockdown)',
+      method: req.method,
+      path: req.originalUrl,
+      statusCode: 403,
+      ip: req.ip,
+    }).catch((err) => console.error('Audit log failed:', err));
+
     return error(res, 'This account uses password sign-in.', 403);
   }
 
@@ -183,10 +202,23 @@ const googleAuth = catchAsync(async (req, res) => {
     // email_verified claim is treated as equivalent proof of ownership to
     // our own OTP round-trip, so this also activates an account that
     // registered by password but never finished OTP verification.
+    // Captured before mutating — only a password-based account that didn't
+    // already have a googleId is a genuine new link worth notifying about.
+    // A Google-native account (no passwordHash) has nothing to "link" here;
+    // it just signs in again.
+    const justLinked = !user.googleId && !!user.passwordHash;
+
     let dirty = false;
     if (!user.googleId) { user.googleId = googleId; dirty = true; }
     if (!user.isEmailVerified) { user.isEmailVerified = true; dirty = true; }
     if (dirty) await user.save({ validateBeforeSave: false });
+
+    if (justLinked) {
+      const linkedAt = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+      emailService.sendGoogleAccountLinkedEmail({ to: user.email, name: user.name, linkedAt }).catch((err) =>
+        console.error('[GoogleAuth] Linked-account email failed:', err.message)
+      );
+    }
   } else {
     // No account for this email. `intent` decides the UX, not whether an
     // account gets created — but on the login page specifically (intent:
