@@ -569,6 +569,14 @@ const getAllProjects = catchAsync(async (req, res) => {
   return success(res, { projects, total, page, totalPages });
 });
 
+const getProjectById = catchAsync(async (req, res) => {
+  const project = await Project.findById(req.params.id)
+    .populate('vendorId', 'businessName location userId');
+  if (!project) return error(res, 'Project not found.', 404);
+
+  return success(res, { project });
+});
+
 const getAllSubscriptions = catchAsync(async (req, res) => {
   const { status, planName, search } = req.query;
 
@@ -624,6 +632,7 @@ module.exports = {
   getPendingProjects,
   moderateProject,
   getAllProjects,
+  getProjectById,
   getAllSubscriptions,
   toggleProjectFeatured,
 };

@@ -9,7 +9,7 @@ const {
   getAuditLogs,
   getRevenueReport, exportRevenueReport,
   getPendingProjects, moderateProject,
-  getAllProjects, getAllSubscriptions,
+  getAllProjects, getProjectById, getAllSubscriptions,
   toggleProjectFeatured,
 } = require('../controllers/admin.controller');
 const {
@@ -84,6 +84,7 @@ router.get('/reports/revenue/export', ...isAdmin, requirePermission('view_analyt
 router.get('/projects/pending',       ...isAdmin, requirePermission('manage_portfolio'), getPendingProjects);
 router.put('/projects/:id/moderate',  ...isAdmin, requirePermission('manage_portfolio'), auditLog('Approve/reject project'), moderateProject);
 router.get('/projects',               ...isAdmin, requirePermission('manage_portfolio'), getAllProjects);
+router.get('/projects/:id',           ...isAdmin, requirePermission('manage_portfolio'), getProjectById);
 router.get('/subscriptions',          ...isAdmin, requirePermission('view_analytics'), getAllSubscriptions);
 router.put('/projects/:id/feature',   ...isAdmin, requirePermission('manage_portfolio'), auditLog('Toggle project featured'), toggleProjectFeatured);
 
