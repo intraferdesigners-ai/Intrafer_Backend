@@ -2,7 +2,6 @@ const Vendor = require('../models/Vendor.model');
 const User = require('../models/User.model');
 const Lead = require('../models/Lead.model');
 const Subscription = require('../models/Subscription.model');
-const Notification = require('../models/Notification.model');
 const Settings = require('../models/Settings.model');
 const AuditLog = require('../models/AuditLog.model');
 const Project = require('../models/Project.model');
@@ -140,15 +139,7 @@ const reassignLead = catchAsync(async (req, res) => {
   lead.statusHistory.push({ status: 'new', changedBy: req.user._id, note: 'Reassigned by admin' });
   await lead.save();
 
-  await Notification.create({
-    recipientId: vendor.userId,
-    recipientRole: 'vendor',
-    type: 'lead_assigned',
-    title: 'Lead reassigned to you',
-    message: `A new lead for ${lead.projectType} in ${lead.city} has been assigned to you.`,
-    channels: ['in_app'],
-    metadata: { leadId: lead._id },
-  });
+  notifService.dispatch('LEAD_ASSIGNED', { vendor, user: req.user, lead });
 
   return success(res, { lead }, 'Lead reassigned successfully.');
 });
