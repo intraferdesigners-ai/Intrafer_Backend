@@ -157,7 +157,7 @@ const getAnalytics = catchAsync(async (req, res) => {
     planBreakdown,
     monthlyLeads,
     featuredCount,
-    pendingVendors,
+    takenDownVendors,
     pendingPortfolio,
   ] = await Promise.all([
     Vendor.countDocuments({ isApproved: true }),
@@ -200,7 +200,7 @@ const getAnalytics = catchAsync(async (req, res) => {
     featuredCount,
     planBreakdown,
     monthlyLeads,
-    pendingVendors,
+    takenDownVendors,
     pendingPortfolio,
   });
 });
