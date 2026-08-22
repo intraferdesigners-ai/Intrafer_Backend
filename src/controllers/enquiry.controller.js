@@ -175,8 +175,21 @@ const autoSubmitEnquiry = catchAsync(async (req, res) => {
 
   // Defense in depth on top of the frontend's hasEngagedVendor localStorage
   // check — a retried request or a second tab should never double-create a
-  // Lead for the same verified contact + vendor pair.
-  const existing = await Lead.findOne({ vendorId: vendor._id, contactEmail: email, contactPhone: phone });
+  // Lead for the same verified contact + vendor pair within a short window.
+  // Time-boxed to 24h rather than forever: hasEngagedVendor is permanent
+  // per-browser, but this same contact could legitimately want to reach the
+  // same vendor again days or weeks later (a second, unrelated project; a
+  // different browser/device where the localStorage flag never existed) —
+  // an unconditional forever-dedup here would silently swallow that
+  // resubmission with no error and no way for the visitor to tell why the
+  // vendor never heard from them again.
+  const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const existing = await Lead.findOne({
+    vendorId: vendor._id,
+    contactEmail: email,
+    contactPhone: phone,
+    createdAt: { $gte: new Date(Date.now() - DEDUP_WINDOW_MS) },
+  });
   if (existing) return success(res, { lead: existing }, 'Enquiry already sent.');
 
   const lead = await Lead.create({
