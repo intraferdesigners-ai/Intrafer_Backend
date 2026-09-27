@@ -56,6 +56,12 @@ const vendorSchema = new mongoose.Schema(
       pincode: { type: String },
       lat: { type: Number },
       lng: { type: Number },
+      // Resolves the free-text city above against the Place taxonomy —
+      // same pattern/purpose as serviceLocationSchema.placeId. Nullable:
+      // this is a backfill onto existing messy data (see
+      // scripts/backfillVendorPlaceIds.js), not every city string resolves
+      // to exactly one confident Place match.
+      placeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Place', default: null },
     },
     serviceLocations: { type: [serviceLocationSchema], default: [] },
     profilePhoto:    { type: String, default: '' },

@@ -261,4 +261,17 @@ const searchVendorCities = catchAsync(async (req, res) => {
   return success(res, { places: results });
 });
 
-module.exports = { searchPlaces, searchLocalities, lookupPincode, searchVendorCities };
+// Distinct states from the Place taxonomy, each with a count of how many
+// Place documents (cities) fall under it — groundwork for the upcoming
+// state hub pages (SEO restructuring, step 4). No vendor-coverage filtering
+// here, unlike searchVendorCities above: this lists the full taxonomy.
+const getStates = catchAsync(async (req, res) => {
+  const states = await Place.aggregate([
+    { $group: { _id: '$state', cityCount: { $sum: 1 } } },
+    { $project: { _id: 0, state: '$_id', cityCount: 1 } },
+    { $sort: { state: 1 } },
+  ]);
+  return success(res, { states });
+});
+
+module.exports = { searchPlaces, searchLocalities, lookupPincode, searchVendorCities, getStates };
