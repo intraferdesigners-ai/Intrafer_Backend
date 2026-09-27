@@ -6,6 +6,7 @@ const Review = require('../models/Review.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
+const { resolveCategory, resolveState, resolvePlaceInState } = require('../utils/resolveTaxonomy');
 
 const SORT_MAP = {
   rating:  { rating: -1 },
@@ -91,25 +92,54 @@ async function attachCardImages(vendors) {
 }
 
 const getVendors = catchAsync(async (req, res) => {
-  const { city, locality, specialization, sort, featured } = req.query;
+  const { city, locality, specialization, sort, featured, category, state } = req.query;
 
   const filter = { isApproved: true, isListingEnabled: true };
-  // A city match must check BOTH a vendor's free-text business-address city
-  // (location.city) AND every city in their serviceLocations array — a
-  // vendor whose home base is Bengaluru but who also services Mysuru should
-  // still turn up when someone filters by Mysuru. This used to only ever
-  // check location.city, silently missing every serviceLocations-only match.
-  // `locality` (no dedicated field on Vendor yet) is folded into the same
-  // OR as an extra term, in case a vendor happened to enter a neighborhood
-  // name into one of these city fields.
-  if (city || locality) {
-    const terms = [city, locality].filter(Boolean).map((t) => new RegExp(t, 'i'));
+
+  // SEO taxonomy filtering (step 5 of the SEO restructuring project) —
+  // only kicks in when category+state+city are ALL present together (the
+  // /[category]/[state]/[city]/ page always sends all three), so it can
+  // never shadow the plain free-text `city`/`locality`/`specialization`
+  // filtering below, which every existing caller keeps using untouched.
+  // category/state/city here are slugs (same slugify() logic the frontend
+  // used to build the link), resolved via the shared taxonomy resolver so
+  // this stays in lockstep with getCategoryCities. An invalid category or a
+  // state/city slug matching no real Place 404s — those are malformed
+  // URLs, not "zero vendors here yet".
+  if (category && state && city) {
+    const serviceCategory = await resolveCategory(category);
+    if (!serviceCategory) return error(res, 'Category not found.', 404);
+
+    const matchedState = await resolveState(state);
+    if (!matchedState) return error(res, 'State not found.', 404);
+
+    const matchedPlace = await resolvePlaceInState(city, matchedState);
+    if (!matchedPlace) return error(res, 'City not found.', 404);
+
+    filter.primaryCategory = serviceCategory._id;
     filter.$or = [
-      { 'location.city': { $in: terms } },
-      { 'serviceLocations.city': { $in: terms } },
+      { 'location.placeId': matchedPlace._id },
+      { 'serviceLocations.placeId': matchedPlace._id },
     ];
+  } else {
+    // A city match must check BOTH a vendor's free-text business-address city
+    // (location.city) AND every city in their serviceLocations array — a
+    // vendor whose home base is Bengaluru but who also services Mysuru should
+    // still turn up when someone filters by Mysuru. This used to only ever
+    // check location.city, silently missing every serviceLocations-only match.
+    // `locality` (no dedicated field on Vendor yet) is folded into the same
+    // OR as an extra term, in case a vendor happened to enter a neighborhood
+    // name into one of these city fields.
+    if (city || locality) {
+      const terms = [city, locality].filter(Boolean).map((t) => new RegExp(t, 'i'));
+      filter.$or = [
+        { 'location.city': { $in: terms } },
+        { 'serviceLocations.city': { $in: terms } },
+      ];
+    }
+    if (specialization) filter.specializations = { $in: [new RegExp(specialization, 'i')] };
   }
-  if (specialization) filter.specializations = { $in: [new RegExp(specialization, 'i')] };
+
   if (featured === 'true') filter.isFeatured = true;
 
   const baseSort = SORT_MAP[sort] || SORT_MAP.rating;
