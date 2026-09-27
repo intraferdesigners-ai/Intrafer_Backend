@@ -362,7 +362,7 @@ const getCategoryCities = catchAsync(async (req, res) => {
     }
   }
 
-  if (vendorIdsByPlace.size === 0) return success(res, { cities: [] });
+  if (vendorIdsByPlace.size === 0) return success(res, { state: matchedState, cities: [] });
 
   const places = await Place.find({
     _id: { $in: [...vendorIdsByPlace.keys()] },
@@ -377,7 +377,10 @@ const getCategoryCities = catchAsync(async (req, res) => {
     }))
     .sort((a, b) => a.city.localeCompare(b.city));
 
-  return success(res, { cities });
+  // The real-cased state name (not just the slug) — the [state] page needs
+  // it for its title/h1/breadcrumb, and title-casing the slug back
+  // wouldn't reliably reconstruct names like "Jammu and Kashmir".
+  return success(res, { state: matchedState, cities });
 });
 
 module.exports = { searchPlaces, searchLocalities, lookupPincode, searchVendorCities, getStates, getCategoryCities };
