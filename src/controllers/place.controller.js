@@ -2,6 +2,7 @@ const Place = require('../models/Place.model');
 const Locality = require('../models/Locality.model');
 const Vendor = require('../models/Vendor.model');
 const Project = require('../models/Project.model');
+const ServiceCategory = require('../models/ServiceCategory.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 
@@ -265,12 +266,53 @@ const searchVendorCities = catchAsync(async (req, res) => {
 // Place documents (cities) fall under it — groundwork for the upcoming
 // state hub pages (SEO restructuring, step 4). No vendor-coverage filtering
 // here, unlike searchVendorCities above: this lists the full taxonomy.
+//
+// With ?category=<slug> (SEO restructuring, step 3): scopes both the state
+// list and each cityCount to Places with at least one live vendor in that
+// category, for the /[category]/ hub page's state list. Only resolved
+// placeId fields count here (location.placeId / serviceLocations[].placeId)
+// — unlike searchVendorCities, this doesn't fall back to raw city-name
+// matching, since by this step every vendor that can resolve already has.
 const getStates = catchAsync(async (req, res) => {
-  const states = await Place.aggregate([
-    { $group: { _id: '$state', cityCount: { $sum: 1 } } },
-    { $project: { _id: 0, state: '$_id', cityCount: 1 } },
-    { $sort: { state: 1 } },
-  ]);
+  const { category } = req.query;
+
+  if (!category) {
+    const states = await Place.aggregate([
+      { $group: { _id: '$state', cityCount: { $sum: 1 } } },
+      { $project: { _id: 0, state: '$_id', cityCount: 1 } },
+      { $sort: { state: 1 } },
+    ]);
+    return success(res, { states });
+  }
+
+  const serviceCategory = await ServiceCategory.findOne({ slug: category, isActive: true });
+  if (!serviceCategory) return error(res, 'Category not found.', 404);
+
+  const vendors = await Vendor.find({
+    isApproved: true,
+    isListingEnabled: true,
+    primaryCategory: serviceCategory._id,
+  }).select('location.placeId serviceLocations.placeId');
+
+  const placeIds = new Set();
+  for (const v of vendors) {
+    if (v.location?.placeId) placeIds.add(v.location.placeId.toString());
+    for (const loc of v.serviceLocations || []) {
+      if (loc.placeId) placeIds.add(loc.placeId.toString());
+    }
+  }
+
+  if (placeIds.size === 0) return success(res, { states: [] });
+
+  const places = await Place.find({ _id: { $in: [...placeIds] } }).select('state');
+  const cityCountByState = new Map();
+  for (const p of places) {
+    cityCountByState.set(p.state, (cityCountByState.get(p.state) || 0) + 1);
+  }
+  const states = [...cityCountByState.entries()]
+    .map(([state, cityCount]) => ({ state, cityCount }))
+    .sort((a, b) => a.state.localeCompare(b.state));
+
   return success(res, { states });
 });
 
