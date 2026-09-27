@@ -7,6 +7,7 @@ const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
 const { resolveCategory, resolveState, resolvePlaceInState } = require('../utils/resolveTaxonomy');
+const { meetsIndexThreshold } = require('../utils/indexThreshold');
 
 const SORT_MAP = {
   rating:  { rating: -1 },
@@ -162,7 +163,15 @@ const getVendors = catchAsync(async (req, res) => {
     .populate('userId', 'name');
 
   const payload = { vendors: await attachCardImages(vendors), total, page, totalPages };
-  if (resolvedLocation) Object.assign(payload, resolvedLocation);
+  // meetsThreshold: only computed/attached in the category+state+city
+  // branch (same gate as resolvedLocation) — the SEO restructuring
+  // project's step 12 indexation decision for the /[category]/[state]/
+  // [city]/ page. `total` here is Vendor.countDocuments(filter), the real
+  // count for this exact category+state+city combo, unaffected by
+  // pagination — not the (possibly page-limited) `vendors.length`. Keeps
+  // the threshold logic itself in one place (indexThreshold.js) rather
+  // than duplicating MIN_VENDORS_TO_INDEX on the frontend.
+  if (resolvedLocation) Object.assign(payload, resolvedLocation, { meetsThreshold: meetsIndexThreshold(total) });
   return success(res, payload);
 });
 
