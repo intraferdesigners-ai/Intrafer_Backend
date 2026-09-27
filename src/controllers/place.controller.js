@@ -5,6 +5,7 @@ const Project = require('../models/Project.model');
 const ServiceCategory = require('../models/ServiceCategory.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
+const { slugify } = require('../utils/slug');
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -316,4 +317,67 @@ const getStates = catchAsync(async (req, res) => {
   return success(res, { states });
 });
 
-module.exports = { searchPlaces, searchLocalities, lookupPincode, searchVendorCities, getStates };
+// Cities within one state that have live vendor presence in one category —
+// SEO restructuring, step 4's /[category]/[state]/ page. category and
+// state are both required; state is a slug (same lib/slug.js logic the
+// frontend used to build the link this resolves), resolved against
+// Place.state's distinct values since Place stores the real casing, not
+// the slug itself.
+//
+// "Matching vendors" mirrors getStates' category filter: live vendors in
+// this category, counted once per city regardless of whether they reach it
+// via location.placeId or a serviceLocations[] entry (or both) — a vendor
+// whose primary address is in a different state still shows up under a
+// city here if one of their serviceLocations resolves into this state.
+const getCategoryCities = catchAsync(async (req, res) => {
+  const { category, state } = req.query;
+  if (!category || !state) return error(res, 'category and state are required.', 400);
+
+  const serviceCategory = await ServiceCategory.findOne({ slug: category, isActive: true });
+  if (!serviceCategory) return error(res, 'Category not found.', 404);
+
+  const distinctStates = await Place.distinct('state');
+  const matchedState = distinctStates.find((s) => slugify(s) === state);
+  if (!matchedState) return error(res, 'State not found.', 404);
+
+  const vendors = await Vendor.find({
+    isApproved: true,
+    isListingEnabled: true,
+    primaryCategory: serviceCategory._id,
+  }).select('_id location.placeId serviceLocations.placeId');
+
+  // placeId -> Set of vendor _ids touching it, so a vendor with several
+  // serviceLocations in the same city (or both location.placeId and a
+  // serviceLocations entry pointing at it) still counts once.
+  const vendorIdsByPlace = new Map();
+  for (const v of vendors) {
+    const placeIds = new Set();
+    if (v.location?.placeId) placeIds.add(v.location.placeId.toString());
+    for (const loc of v.serviceLocations || []) {
+      if (loc.placeId) placeIds.add(loc.placeId.toString());
+    }
+    for (const pid of placeIds) {
+      if (!vendorIdsByPlace.has(pid)) vendorIdsByPlace.set(pid, new Set());
+      vendorIdsByPlace.get(pid).add(v._id.toString());
+    }
+  }
+
+  if (vendorIdsByPlace.size === 0) return success(res, { cities: [] });
+
+  const places = await Place.find({
+    _id: { $in: [...vendorIdsByPlace.keys()] },
+    state: matchedState,
+  }).select('name');
+
+  const cities = places
+    .map((p) => ({
+      city: p.name,
+      citySlug: slugify(p.name),
+      vendorCount: vendorIdsByPlace.get(p._id.toString()).size,
+    }))
+    .sort((a, b) => a.city.localeCompare(b.city));
+
+  return success(res, { cities });
+});
+
+module.exports = { searchPlaces, searchLocalities, lookupPincode, searchVendorCities, getStates, getCategoryCities };

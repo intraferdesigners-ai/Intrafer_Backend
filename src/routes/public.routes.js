@@ -16,7 +16,7 @@ const {
 } = require('../controllers/public.controller');
 const { createTicket } = require('../controllers/supportTicket.controller');
 const { getPublicCities, getPublicCategories } = require('../controllers/taxonomy.controller');
-const { searchPlaces, searchLocalities, lookupPincode, searchVendorCities, getStates } = require('../controllers/place.controller');
+const { searchPlaces, searchLocalities, lookupPincode, searchVendorCities, getStates, getCategoryCities } = require('../controllers/place.controller');
 const { getServiceCategoryBySlug } = require('../controllers/serviceCategory.controller');
 
 const router = express.Router();
@@ -40,6 +40,7 @@ router.get('/places/:placeId/localities', searchLocalities);
 router.get('/pincode/:pincode',           lookupPincode);
 router.get('/vendor-cities',              searchVendorCities);
 router.get('/states',                     getStates);
+router.get('/category-cities',            getCategoryCities);
 router.get('/service-categories/:slug',   getServiceCategoryBySlug);
 router.get('/homepage-content',      getHomepageContent);
 router.get('/site-reviews',          getSiteReviews);
