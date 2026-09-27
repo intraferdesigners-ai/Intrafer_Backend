@@ -43,6 +43,11 @@ const vendorSchema = new mongoose.Schema(
     businessPhone: { type: String, default: '', trim: true },
     businessEmail: { type: String, default: '', trim: true, lowercase: true },
     specializations: [{ type: String }],
+    // The SEO taxonomy category (interior-designers, architects, ...) this
+    // vendor is listed under. Nullable: this is being backfilled onto
+    // existing vendors (see scripts/backfillVendorCategory.js), and vendor
+    // signup doesn't collect this yet — that's a later step.
+    primaryCategory: { type: mongoose.Schema.Types.ObjectId, ref: 'ServiceCategory', default: null },
     experienceYears: { type: Number, default: null },
     services: [serviceSchema],
     location: {
