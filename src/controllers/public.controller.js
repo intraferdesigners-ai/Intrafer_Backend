@@ -171,7 +171,19 @@ const getVendorById = catchAsync(async (req, res) => {
     _id: req.params.id,
     isApproved: true,
     isListingEnabled: true,
-  }).populate('userId', 'name phone email');
+  })
+    .populate('userId', 'name phone email')
+    // SEO restructuring, step 6: the vendor profile page's breadcrumb
+    // (Home > Category > State > City > Vendor) needs the real category
+    // slug/name and the real place name/state, not just the raw ObjectIds
+    // — same populated shape the [category]/[state]/[city] pages already
+    // work with. Either can be null/unset (primaryCategory on any vendor
+    // signed up before step 1's backfill window closes for new signups;
+    // location.placeId when a vendor's free-text city never resolved
+    // during step 2's backfill), which the page handles by omitting the
+    // breadcrumb rather than rendering broken links.
+    .populate('primaryCategory', 'name slug schemaOrgType')
+    .populate('location.placeId', 'name state');
 
   if (!vendor) return error(res, 'Vendor not found.', 404);
   return success(res, { vendor });
