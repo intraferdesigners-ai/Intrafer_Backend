@@ -256,18 +256,46 @@ const getSimilarVendors = catchAsync(async (req, res) => {
 });
 
 const getGallery = catchAsync(async (req, res) => {
-  const { room, style } = req.query;
+  const { room, style, page, limit } = req.query;
 
   const filter = { isPublished: true, moderationStatus: 'approved' };
   if (room) filter.projectType = { $regex: new RegExp(room, 'i') };
   if (style) filter.style = { $regex: new RegExp(style, 'i') };
 
+  // Optional pagination — added so every approved project can eventually
+  // be enumerated (e.g. for sitemap inclusion, not wired up yet), the same
+  // way GET /api/public/vendors already can. Only activates when page or
+  // limit is explicitly passed; the live /gallery page calls this with
+  // neither and must keep getting the exact same response shape (implicit
+  // top-50 by completedYear, no total/totalPages) it always has.
+  if (page === undefined && limit === undefined) {
+    const projects = await Project.find(filter)
+      .sort({ completedYear: -1 })
+      .limit(50)
+      .populate('vendorId', 'businessName location _id');
+
+    return success(res, { projects });
+  }
+
+  const total = await Project.countDocuments(filter);
+  const paginated = paginate(req.query, total);
+
+  // completedYear alone isn't a stable sort key for skip/limit paging —
+  // several real projects share the same year (e.g. 5 are all 2026), and
+  // Mongo doesn't guarantee a consistent relative order among tied
+  // documents across separate queries, so consecutive pages could return
+  // duplicates or skip some entirely. _id as a secondary key makes the
+  // sort deterministic; verified by paginating through every real project
+  // and confirming zero duplicates/gaps. Only added here, not on the
+  // no-params branch above, so that branch's response stays byte-for-byte
+  // identical to before this change (verified).
   const projects = await Project.find(filter)
-    .sort({ completedYear: -1 })
-    .limit(50)
+    .sort({ completedYear: -1, _id: 1 })
+    .skip(paginated.skip)
+    .limit(paginated.limit)
     .populate('vendorId', 'businessName location _id');
 
-  return success(res, { projects });
+  return success(res, { projects, total, page: paginated.page, totalPages: paginated.totalPages });
 });
 
 const getStats = catchAsync(async (req, res) => {
