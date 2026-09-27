@@ -95,6 +95,12 @@ const getVendors = catchAsync(async (req, res) => {
   const { city, locality, specialization, sort, featured, category, state } = req.query;
 
   const filter = { isApproved: true, isListingEnabled: true };
+  // Set only in the category+state+city branch below — the real-cased
+  // Place/state names the /[category]/[state]/[city]/ page needs for its
+  // title/h1/breadcrumb, same reasoning as getCategoryCities' `state`
+  // field. Stays undefined (omitted from the response) on every existing
+  // call pattern, so that response shape is untouched.
+  let resolvedLocation;
 
   // SEO taxonomy filtering (step 5 of the SEO restructuring project) —
   // only kicks in when category+state+city are ALL present together (the
@@ -121,6 +127,7 @@ const getVendors = catchAsync(async (req, res) => {
       { 'location.placeId': matchedPlace._id },
       { 'serviceLocations.placeId': matchedPlace._id },
     ];
+    resolvedLocation = { state: matchedState, city: matchedPlace.name };
   } else {
     // A city match must check BOTH a vendor's free-text business-address city
     // (location.city) AND every city in their serviceLocations array — a
@@ -154,7 +161,9 @@ const getVendors = catchAsync(async (req, res) => {
     .limit(limit)
     .populate('userId', 'name');
 
-  return success(res, { vendors: await attachCardImages(vendors), total, page, totalPages });
+  const payload = { vendors: await attachCardImages(vendors), total, page, totalPages };
+  if (resolvedLocation) Object.assign(payload, resolvedLocation);
+  return success(res, payload);
 });
 
 const getVendorById = catchAsync(async (req, res) => {
