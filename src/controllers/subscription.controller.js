@@ -225,9 +225,18 @@ const downloadInvoice = catchAsync(async (req, res) => {
 
 const activateFromPayment = async ({ orderId, paymentId }) => {
   const sub = await Subscription.findOne({ razorpayOrderId: orderId });
-  if (!sub || sub.status === 'active') return; // already active (e.g. client-side verify already ran) — idempotent no-op
+  // Only an unpaid order can activate. 'active' means client-side verify or the
+  // webhook already ran (idempotent no-op); 'cancelled'/'expired' must never be
+  // revived by a late payment event. 'failed' is allowed because Razorpay
+  // Checkout retries on the same order — a payment.failed webhook for the first
+  // attempt can precede a successful retry.
+  if (!sub || !['pending', 'failed'].includes(sub.status)) return;
 
   const plan = PLANS.find((p) => p.name === sub.planName);
+  if (!plan) {
+    console.error(`[Subscription] Cannot activate ${sub._id} (order ${orderId}, payment ${paymentId}): plan '${sub.planName}' no longer exists in PLANS.`);
+    return;
+  }
   const startDate = new Date();
   const endDate = new Date(startDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
 
