@@ -220,11 +220,10 @@ const googleAuth = catchAsync(async (req, res) => {
       );
     }
   } else {
-    // No account for this email. `intent` decides the UX, not whether an
-    // account gets created — but on the login page specifically (intent:
-    // 'login'), we do not silently provision one; a distinct NO_ACCOUNT
-    // response lets the frontend show "no account found, sign up instead"
-    // instead of a login click quietly becoming a signup (§03).
+    // No account for this email. With intent 'signup' — which both the
+    // login and register pages now send — one is created and signed in
+    // (isNewUser: true). intent 'login' still gets a distinct NO_ACCOUNT
+    // response instead, but no frontend caller sends it anymore.
     if (intent !== 'signup') {
       return error(res, 'No account found for this email. Please sign up instead.', 404, { code: 'NO_ACCOUNT' });
     }
