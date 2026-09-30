@@ -1,7 +1,6 @@
 const Vendor = require('../models/Vendor.model');
 const Project = require('../models/Project.model');
 const Lead = require('../models/Lead.model');
-const Subscription = require('../models/Subscription.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const { getFileUrl } = require('../middleware/upload');
@@ -174,32 +173,11 @@ const getAnalytics = catchAsync(async (req, res) => {
   const { totalLeads, wonLeads, rating } = vendor;
   const winRate = totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 100) : 0;
 
-  const subscription = await Subscription.findOne({
-    vendorId: vendor._id,
-    status: 'active',
-  });
-
-  let creditsUsed = 0;
-  let creditsTotal = 0;
-  if (subscription) {
-    creditsTotal = subscription.leadsPerMonth || 0;
-    const periodStart = subscription.startDate ||
-      new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    creditsUsed = await Lead.countDocuments({
-      vendorId: vendor._id,
-      status: { $in: ['accepted', 'won', 'lost'] },
-      updatedAt: { $gte: periodStart },
-    });
-  }
-
   return success(res, {
     totalLeads,
     wonLeads,
     winRate: `${winRate}%`,
     rating,
-    creditsUsed,
-    creditsTotal,
-    creditsRemaining: Math.max(0, creditsTotal - creditsUsed),
   });
 });
 
