@@ -15,9 +15,9 @@ const { PERMISSION_KEYS } = require('../constants/permissions');
 const SETTINGS_DEFAULTS = {
   site_name: 'Intrafer',
   site_tagline: 'Find. Compare. Design.',
-  support_email: 'support@intrafer.in',
-  support_phone: '+91 98765 00000',
-  whatsapp_number: '919876500000',
+  support_email: 'Intraferpvtltd@gmail.com',
+  support_phone: '+91 92172 11408',
+  whatsapp_number: '919217211408',
   lead_expiry_hours: 48,
   popup_delay_seconds: 20,
   popup_retry_minutes: 1,
