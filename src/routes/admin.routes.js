@@ -27,7 +27,7 @@ const {
 } = require('../controllers/emailTemplate.controller');
 const {
   getLandingPages, getLandingPageById, createLandingPage, updateLandingPage, deleteLandingPage, matchCheck,
-  getLandingPageCategories, uploadLandingPageImage,
+  getLandingPageCategories, uploadLandingPageImage, createPreviewToken,
 } = require('../controllers/landingPage.controller');
 const { upload } = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
@@ -109,6 +109,10 @@ router.post(
   uploadLandingPageImage
 );
 router.get('/landing-pages/:id',         ...isAdmin, requirePermission('manage_pages'), getLandingPageById);
+// Read-only (mints a signed draft-preview link), so no auditLog. No
+// admin-write limiter exists besides uploadLimiter (uploads only) —
+// globalLimiter covers it like every other admin route.
+router.post('/landing-pages/:id/preview-token', ...isAdmin, requirePermission('manage_pages'), createPreviewToken);
 router.post('/landing-pages',            ...isAdmin, requirePermission('manage_pages'), auditLog('Create landing page'), createLandingPage);
 router.put('/landing-pages/:id',         ...isAdmin, requirePermission('manage_pages'), auditLog('Update landing page'), updateLandingPage);
 router.delete('/landing-pages/:id',      ...isAdmin, requirePermission('manage_pages'), auditLog('Delete landing page'), deleteLandingPage);

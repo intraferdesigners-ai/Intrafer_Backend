@@ -9,6 +9,7 @@ const { slugify } = require('../utils/slug');
 const { getFileUrl } = require('../middleware/upload');
 const { resolveCategory } = require('../utils/resolveTaxonomy');
 const { attachCardImages } = require('./public.controller');
+const { signPreviewToken, verifyPreviewToken } = require('../utils/landingPreviewToken');
 const {
   VENDOR_SORT, buildVendorFilter, placeFilter, nameFilter,
   computeIndexable, resolvePlaceWithAliases, isSimilarSlug,
@@ -221,6 +222,22 @@ const uploadLandingPageImage = (req, res) => {
   return success(res, { url: getFileUrl(req.file) }, 'Uploaded successfully.');
 };
 
+// Mints a 30-minute token that shows this page — draft or published — at
+// its real public URL. Read-only, so no audit log. The token is never
+// logged; it's only returned to the admin who asked.
+const createPreviewToken = catchAsync(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return error(res, 'Landing page not found.', 404);
+  const page = await LandingPage.findById(req.params.id)
+    .select('category stateSlug citySlug')
+    .populate('category', 'slug');
+  if (!page) return error(res, 'Landing page not found.', 404);
+  if (!page.category?.slug) return error(res, "This page's category no longer exists.", 409);
+
+  const { token, expiresAt } = signPreviewToken(page._id);
+  const path = `/${page.category.slug}/${page.stateSlug}/${page.citySlug}/?preview=${encodeURIComponent(token)}`;
+  return success(res, { token, expiresAt, path });
+});
+
 // Editor hint + duplicate warning. Never blocks — only informs.
 // `category` is an ObjectId (or a slug); state/city are free text or slugs.
 // `excludeId` leaves the page being edited out of `similar`.
@@ -290,8 +307,15 @@ const PUBLIC_OMIT = '-createdBy -updatedBy -__v';
 // Returns page:null for no record or a draft; vendors/indexable are
 // computed either way, using the default vendorList/seo settings when
 // there's no page.
+//
+// `preview` (optional): a token from createPreviewToken. Only when it
+// verifies AND names the page at this exact URL is the published filter
+// dropped; the response then adds `preview: true`, forces
+// `indexable: false` and is no-store. Any other token — missing, expired,
+// tampered, another purpose, another page — gets exactly the normal
+// response, so it never reveals whether a draft exists.
 const getPublicLandingPage = catchAsync(async (req, res) => {
-  const { category, state, city } = req.query;
+  const { category, state, city, preview } = req.query;
   if (!category || !state || !city) return error(res, 'category, state and city are required.', 400);
 
   const serviceCategory = await resolveCategory(category);
@@ -301,14 +325,19 @@ const getPublicLandingPage = catchAsync(async (req, res) => {
   const citySlug = slugify(String(city));
   if (!stateSlug || !citySlug) return error(res, 'Invalid state or city.', 400);
 
-  const page = await LandingPage.findOne({
-    category: serviceCategory._id,
-    stateSlug,
-    citySlug,
-    status: 'published',
-  })
+  const key = { category: serviceCategory._id, stateSlug, citySlug };
+  const findPage = (filter) => LandingPage.findOne(filter)
     .select(PUBLIC_OMIT)
     .populate('category', 'name slug schemaOrgType');
+
+  const previewPageId = verifyPreviewToken(preview);
+  let page = null;
+  let isPreview = false;
+  if (previewPageId && mongoose.isValidObjectId(previewPageId)) {
+    page = await findPage({ ...key, _id: previewPageId });
+    isPreview = Boolean(page);
+  }
+  if (!isPreview) page = await findPage({ ...key, status: 'published' });
 
   const sort = page?.vendorList?.sort || 'featured';
   const limit = page?.vendorList?.limit || 12;
@@ -321,12 +350,17 @@ const getPublicLandingPage = catchAsync(async (req, res) => {
     .limit(limit)
     .populate('userId', 'name');
 
-  return success(res, {
+  const body = {
     page: page || null,
     vendors: await attachCardImages(vendors),
     vendorCount,
-    indexable: computeIndexable(indexing, vendorCount),
-  });
+    indexable: isPreview ? false : computeIndexable(indexing, vendorCount),
+  };
+  if (isPreview) {
+    body.preview = true;
+    res.set('Cache-Control', 'no-store');
+  }
+  return success(res, body);
 });
 
 // Published pages for the Phase 2 sitemap. Pages whose category is gone
@@ -356,6 +390,6 @@ const getLandingPagesSitemap = catchAsync(async (req, res) => {
 
 module.exports = {
   getLandingPages, getLandingPageById, createLandingPage, updateLandingPage, deleteLandingPage, matchCheck,
-  getLandingPageCategories, uploadLandingPageImage,
+  getLandingPageCategories, uploadLandingPageImage, createPreviewToken,
   getPublicLandingPage, getLandingPagesSitemap,
 };
