@@ -34,6 +34,51 @@ const pickEditable = (body = {}) => {
 const duplicateMessage = (page) =>
   `A landing page for ${page.city || '(all cities)'}, ${page.state || '(all states)'} already exists in this category.`;
 
+// Plain-English names for schema paths, keyed with array indexes
+// collapsed to `N` (see validationMessage).
+const FIELD_LABELS = {
+  state: 'State',
+  city: 'City',
+  category: 'Category',
+  'banner.imageUrl': 'Banner image URL',
+  'banner.headline': 'Banner headline',
+  'banner.subheadline': 'Banner subheadline',
+  'banner.ctaLabel': 'CTA label',
+  'banner.ctaUrl': 'CTA URL',
+  heading: 'Heading',
+  intro: 'Intro',
+  'sections.N.title': 'Section title',
+  'sections.N.body': 'Section body',
+  'sections.N.faqItems.N.question': 'FAQ question',
+  'sections.N.faqItems.N.answer': 'FAQ answer',
+  'sections.N.localities.N': 'Locality name',
+  'seo.metaTitle': 'Meta title',
+  'seo.metaDescription': 'Meta description',
+  'seo.ogImage': 'OG image URL',
+};
+
+// Rewrites Mongoose's built-in validator messages ("Path `seo.metaTitle`
+// (`...`) is longer than the maximum allowed length (70).") for the
+// admin. Custom messages (https URL, section/FAQ/locality caps, the CTA
+// pair rule) aren't one of these kinds and pass through unchanged.
+function validationMessage(path, e) {
+  const key = path.replace(/\.\d+(?=\.|$)/g, '.N');
+  if (key === 'vendorList.limit' && (e.kind === 'min' || e.kind === 'max')) {
+    const { min, max } = LandingPage.schema.path('vendorList.limit').options;
+    return `Show between ${min} and ${max} vendors.`;
+  }
+  if (e.kind === 'enum') return 'Choose a valid option.';
+  const label = FIELD_LABELS[key];
+  if (!label) return e.message;
+  switch (e.kind) {
+    case 'maxlength': return `${label} must be ${e.properties.maxlength} characters or fewer.`;
+    case 'max': return `${label} must be ${e.properties.max} or less.`;
+    case 'min': return `${label} must be ${e.properties.min} or more.`;
+    case 'required': return `${label} is required.`;
+    default: return e.message;
+  }
+}
+
 // Pre-checks the unique (category, stateSlug, citySlug) key so the admin
 // gets a clear 409 instead of errorHandler's generic "category already in
 // use"; the E11000 catch in save() below covers the race between check
@@ -51,7 +96,7 @@ async function saveWithDuplicateCheck(res, page) {
     for (const [path, e] of Object.entries(err.errors)) {
       // Cast/nested errors repeat on parent paths (e.g. 'sections' and
       // 'sections.0.type') — keep only the most specific ones.
-      if (!Object.keys(err.errors).some((other) => other.startsWith(`${path}.`))) errors[path] = e.message;
+      if (!Object.keys(err.errors).some((other) => other.startsWith(`${path}.`))) errors[path] = validationMessage(path, e);
     }
     return error(res, Object.values(errors).join(', '), 400, errors);
   }

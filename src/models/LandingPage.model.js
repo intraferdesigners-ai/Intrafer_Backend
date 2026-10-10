@@ -18,6 +18,7 @@ const { slugify } = require('../utils/slug');
 // {{category}} {{vendorCount}} are stored raw and resolved at render time.
 
 const MAX_SECTIONS = 12;
+const CTA_PAIR_MESSAGE = 'Set both the CTA label and the CTA URL, or leave both empty.';
 
 // Repeats until stable so nested/split tags (`<scr<script>ipt>`) can't
 // reassemble into a tag after one pass. Only matches real tag syntax — a
@@ -150,6 +151,16 @@ landingPageSchema.pre('validate', function () {
     section.localities = section.localities.map(stripHtml).filter(Boolean);
   }
 
+  // The CTA button needs both a label and a target — one without the
+  // other renders a dead or unlabelled button. Both empty means no CTA.
+  // Runs on updates too: the controller assigns onto the loaded doc and
+  // calls validate().
+  const hasCtaLabel = Boolean(this.banner.ctaLabel);
+  const hasCtaUrl = Boolean(this.banner.ctaUrl);
+  if (hasCtaLabel !== hasCtaUrl) {
+    this.invalidate(hasCtaLabel ? 'banner.ctaUrl' : 'banner.ctaLabel', CTA_PAIR_MESSAGE);
+  }
+
   this.stateSlug = this.state ? slugify(this.state) : '';
   this.citySlug = this.city ? slugify(this.city) : '';
 
@@ -168,3 +179,4 @@ landingPageSchema.pre('validate', function () {
 module.exports = mongoose.model('LandingPage', landingPageSchema);
 module.exports.stripHtml = stripHtml;
 module.exports.MAX_SECTIONS = MAX_SECTIONS;
+module.exports.CTA_PAIR_MESSAGE = CTA_PAIR_MESSAGE;
