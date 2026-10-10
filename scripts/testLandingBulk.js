@@ -72,6 +72,8 @@ LandingPage.prototype.save = async function save(options = {}) {
 for (const name of ['create', 'insertMany', 'updateOne', 'updateMany', 'findByIdAndUpdate', 'findOneAndUpdate', 'bulkWrite', 'replaceOne']) {
   LandingPage[name] = () => { throw new Error(`LandingPage.${name} must not be called`); };
 }
+const CATEGORY_NAMES = { [String(CAT)]: 'Interior Designers' };
+ServiceCategory.findById = (id) => query(CATEGORY_NAMES[String(id)] ? { _id: id, name: CATEGORY_NAMES[String(id)] } : null);
 ServiceCategory.exists = async (filter) => ([CAT, OTHER_CAT].some((c) => eq(c, filter._id)) ? { _id: filter._id } : null);
 const VENDORS = { pune: 7, nashik: 2 };
 Vendor.countDocuments = async (filter) => VENDORS[filter.citySlug] || 0;
@@ -186,6 +188,24 @@ async function check(name, fn) {
     const r = await call(duplicateLandingPage, { params: { id: String(pune._id) }, body: { state: 'maharashtra', city: 'NASHIK' } });
     assert.strictEqual(r.status, 409);
     assert.match(r.body.message, /already exists/);
+  });
+
+  await check('duplicate audit details: ids + labels + warning count on success; nothing on 400/404/409', async () => {
+    const ok = await call(duplicateLandingPage, { params: { id: String(pune._id) }, body: { state: 'Uttar Pradesh', city: 'Gautam  Buddha Nagar' } });
+    assert.strictEqual(ok.status, 201);
+    assert.deepStrictEqual(ok.locals.auditDetails, {
+      sourceId: String(pune._id),
+      sourceLabel: 'Interior Designers — Pune, Maharashtra',
+      newId: String(ok.body.data.page._id),
+      newLabel: 'Interior Designers — Gautam Buddha Nagar, Uttar Pradesh',
+      warnings: ok.body.data.warnings.length,
+    });
+    assert.ok(ok.locals.auditDetails.warnings > 0);
+    const conflict = await call(duplicateLandingPage, { params: { id: String(pune._id) }, body: { state: 'Uttar Pradesh', city: 'Gautam Buddha Nagar' } });
+    const blank = await call(duplicateLandingPage, { params: { id: String(pune._id) }, body: { state: '', city: 'X' } });
+    const missing = await call(duplicateLandingPage, { params: { id: String(new mongoose.Types.ObjectId()) }, body: { state: 'A', city: 'B' } });
+    assert.deepStrictEqual([conflict.status, blank.status, missing.status], [409, 400, 404]);
+    for (const r of [conflict, blank, missing]) assert.strictEqual(r.locals.auditDetails, undefined);
   });
 
   await check('copyContent never carries _id, slugs, status, publishedAt, createdBy/updatedBy or timestamps', () => {

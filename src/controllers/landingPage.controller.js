@@ -402,7 +402,20 @@ const duplicateLandingPage = catchAsync(async (req, res) => {
   const failed = await saveWithDuplicateCheck(res, page);
   if (failed) return failed;
 
-  return success(res, { page, warnings: findSourceMentions(source, { state, city }) }, 'Draft created.', 201);
+  const warnings = findSourceMentions(source, { state, city });
+  // Audit: ids and "Category — City, State" labels only, never content.
+  // Set only on success; a 4xx isn't audited at all.
+  const categoryDoc = await ServiceCategory.findById(source.category).select('name');
+  const label = (p) => `${categoryDoc?.name || 'Unknown category'} — ${p.city}, ${p.state}`;
+  res.locals.auditDetails = {
+    sourceId: String(source._id),
+    sourceLabel: label(source),
+    newId: String(page._id),
+    newLabel: label(page),
+    warnings: warnings.length,
+  };
+
+  return success(res, { page, warnings }, 'Draft created.', 201);
 });
 
 // POST /admin/landing-pages/bulk { templateId?, category?, items, dryRun? }
