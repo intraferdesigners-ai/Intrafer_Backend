@@ -13,6 +13,11 @@ const LandingPage = require('../src/models/LandingPage.model');
 const ServiceCategory = require('../src/models/ServiceCategory.model');
 const { createLandingPage, updateLandingPage } = require('../src/controllers/landingPage.controller');
 
+// Version history has its own suite (testLandingVersions.js); stub it here.
+const versionService = require('../src/services/landingPageVersion.service');
+versionService.recordVersion = async () => null;
+versionService.deleteVersionsFor = async () => {};
+
 const PAIR = LandingPage.CTA_PAIR_MESSAGE;
 const categoryId = new mongoose.Types.ObjectId();
 const userId = new mongoose.Types.ObjectId();

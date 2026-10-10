@@ -26,6 +26,11 @@ const {
 } = require('../src/controllers/landingPage.controller');
 const { findSourceMentions, copyContent } = require('../src/utils/landingPageCopy');
 
+// Version history has its own suite (testLandingVersions.js); stub it here.
+const versionService = require('../src/services/landingPageVersion.service');
+versionService.recordVersion = async () => null;
+versionService.deleteVersionsFor = async () => {};
+
 const CAT = new mongoose.Types.ObjectId();
 const OTHER_CAT = new mongoose.Types.ObjectId();
 const ADMIN = new mongoose.Types.ObjectId();

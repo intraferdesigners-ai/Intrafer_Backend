@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const LandingPage = require('../models/LandingPage.model');
+const LandingPageVersion = require('../models/LandingPageVersion.model');
+const versionService = require('../services/landingPageVersion.service');
 const ServiceCategory = require('../models/ServiceCategory.model');
 const Vendor = require('../models/Vendor.model');
 const catchAsync = require('../utils/catchAsync');
@@ -126,6 +128,25 @@ async function saveWithDuplicateCheck(res, page) {
   return null;
 }
 
+// Version history (Phase 4B). Called only AFTER a successful save, with
+// the saved document. recordVersion already swallows its own errors; this
+// guard makes sure nothing it does can ever fail the request.
+async function recordSafely(page, opts) {
+  try {
+    await versionService.recordVersion(page, opts);
+  } catch (err) {
+    console.error('Landing page version not recorded:', err.message);
+  }
+}
+
+// body.restoredFrom -> that version's id when it's a version of THIS
+// page, else null (silently: a foreign/invalid id is just ignored).
+async function validRestoredFrom(value, pageId) {
+  if (!value || !mongoose.isValidObjectId(value)) return null;
+  const owned = await LandingPageVersion.exists({ _id: value, page: pageId });
+  return owned ? owned._id : null;
+}
+
 // Unpublish is the emergency takedown, so it must never be blocked by
 // validation — a page that breaks today's rules (an old http:// image, a
 // CTA label without a URL) still has to come down. Only `status` and
@@ -187,6 +208,7 @@ const createLandingPage = catchAsync(async (req, res) => {
   const page = new LandingPage({ ...data, createdBy: req.user._id, updatedBy: req.user._id });
   const failed = await saveWithDuplicateCheck(res, page);
   if (failed) return failed;
+  await recordSafely(page, { kind: 'create', adminId: req.user._id });
 
   return success(res, { page }, 'Landing page created.', 201);
 });
@@ -196,12 +218,16 @@ const updateLandingPage = catchAsync(async (req, res) => {
   const page = await LandingPage.findById(req.params.id);
   if (!page) return error(res, 'Landing page not found.', 404);
 
-  const data = pickEditable(req.body);
+  const data = pickEditable(req.body); // never includes restoredFrom
+  const previousStatus = page.status;
   // The editor's Unpublish sends exactly { status: 'draft' }.
   if (Object.keys(data).length === 1 && data.status === 'draft') {
     await unpublishPage(page, req.user._id);
+    // Content is unchanged; the version records the takedown.
+    if (previousStatus !== 'draft') await recordSafely(page, { kind: 'unpublish', adminId: req.user._id });
     return success(res, { page }, 'Landing page updated.');
   }
+  const restoredFrom = await validRestoredFrom(req.body?.restoredFrom, page._id);
   if (data.category !== undefined) {
     if (!mongoose.isValidObjectId(data.category) || !(await ServiceCategory.exists({ _id: data.category }))) {
       return error(res, 'Category not found.', 400);
@@ -222,6 +248,13 @@ const updateLandingPage = catchAsync(async (req, res) => {
   const failed = await saveWithDuplicateCheck(res, page);
   if (failed) return failed;
 
+  // A status change names the version (and still snapshots any new
+  // content); otherwise a restore, otherwise a plain save (skipped by the
+  // service when nothing changed).
+  let kind = restoredFrom ? 'restore' : 'save';
+  if (page.status !== previousStatus) kind = page.status === 'published' ? 'publish' : 'unpublish';
+  await recordSafely(page, { kind, adminId: req.user._id, restoredFrom });
+
   return success(res, { page }, 'Landing page updated.');
 });
 
@@ -231,6 +264,7 @@ const deleteLandingPage = catchAsync(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return error(res, 'Landing page not found.', 404);
   const page = await LandingPage.findByIdAndDelete(req.params.id);
   if (!page) return error(res, 'Landing page not found.', 404);
+  await versionService.deleteVersionsFor(page._id);
   return success(res, {}, 'Landing page deleted.');
 });
 
@@ -401,6 +435,7 @@ const duplicateLandingPage = catchAsync(async (req, res) => {
   const page = buildDraft({ template: source, category: source.category, state, city, userId: req.user._id });
   const failed = await saveWithDuplicateCheck(res, page);
   if (failed) return failed;
+  await recordSafely(page, { kind: 'duplicate', adminId: req.user._id });
 
   const warnings = findSourceMentions(source, { state, city });
   // Audit: ids and "Category — City, State" labels only, never content.
@@ -504,6 +539,7 @@ const bulkCreateLandingPages = catchAsync(async (req, res) => {
     try {
       await page.validate();
       await page.save();
+      await recordSafely(page, { kind: 'bulk_create', adminId: req.user._id });
       r.status = 'created';
       r.pageId = page._id;
       r.warnings = template ? findSourceMentions(template, r) : [];
@@ -553,6 +589,7 @@ const bulkLandingPageAction = catchAsync(async (req, res) => {
     try {
       if (action === 'delete') {
         await LandingPage.deleteOne({ _id: page._id });
+        await versionService.deleteVersionsFor(page._id);
         results.push({ id, status: 'ok' });
         continue;
       }
@@ -569,6 +606,7 @@ const bulkLandingPageAction = catchAsync(async (req, res) => {
         await page.validate(); // pre('validate') also sets publishedAt on first publish
         await page.save();
       }
+      await recordSafely(page, { kind: action, adminId: req.user._id });
       results.push({ id, status: 'ok' });
     } catch (err) {
       const message = err.name === 'ValidationError'
@@ -582,6 +620,38 @@ const bulkLandingPageAction = catchAsync(async (req, res) => {
   for (const r of results) summary[r.status] += 1;
   res.locals.auditDetails = { action, ...summary, ids: unique.slice(0, MAX_BULK_ACTION_IDS) };
   return success(res, { results, summary });
+});
+
+// ── Version history (Phase 4B, read-only) ────────────────────────────────
+
+const versionSummary = (v) => ({
+  id: v._id,
+  kind: v.kind,
+  createdAt: v.createdAt,
+  savedBy: v.savedBy && typeof v.savedBy === 'object' && v.savedBy.name ? { name: v.savedBy.name } : null,
+  changedFields: v.changedFields || [],
+  restoredFrom: v.restoredFrom || null,
+});
+
+// GET /admin/landing-pages/:id/versions — newest first, no snapshots.
+const getLandingPageVersions = catchAsync(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return error(res, 'Landing page not found.', 404);
+  if (!(await LandingPage.exists({ _id: req.params.id }))) return error(res, 'Landing page not found.', 404);
+  const versions = await LandingPageVersion.find({ page: req.params.id })
+    .sort({ createdAt: -1, _id: -1 })
+    .select('-snapshot')
+    .populate('savedBy', 'name');
+  return success(res, { versions: versions.map(versionSummary) });
+});
+
+// GET /admin/landing-pages/:id/versions/:versionId — one version with its
+// snapshot; 404 unless it belongs to that page.
+const getLandingPageVersion = catchAsync(async (req, res) => {
+  const { id, versionId } = req.params;
+  if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(versionId)) return error(res, 'Version not found.', 404);
+  const version = await LandingPageVersion.findOne({ _id: versionId, page: id }).populate('savedBy', 'name');
+  if (!version) return error(res, 'Version not found.', 404);
+  return success(res, { version: { ...versionSummary(version), snapshot: version.snapshot } });
 });
 
 // ── Public ───────────────────────────────────────────────────────────────
@@ -678,5 +748,6 @@ module.exports = {
   getLandingPages, getLandingPageById, createLandingPage, updateLandingPage, deleteLandingPage, matchCheck,
   getLandingPageCategories, uploadLandingPageImage, createPreviewToken,
   duplicateLandingPage, bulkCreateLandingPages, bulkLandingPageAction,
+  getLandingPageVersions, getLandingPageVersion,
   getPublicLandingPage, getLandingPagesSitemap,
 };

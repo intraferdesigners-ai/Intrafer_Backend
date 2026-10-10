@@ -31,6 +31,11 @@ const { getPublicLandingPage, createPreviewToken } = require('../src/controllers
 const { protect } = require('../src/middleware/auth');
 const { signPreviewToken, verifyPreviewToken } = require('../src/utils/landingPreviewToken');
 
+// Version history has its own suite (testLandingVersions.js); stub it here.
+const versionService = require('../src/services/landingPageVersion.service');
+versionService.recordVersion = async () => null;
+versionService.deleteVersionsFor = async () => {};
+
 // ── In-memory pages ──────────────────────────────────────────────────────
 const draft = {
   _id: new mongoose.Types.ObjectId(), category: CATEGORY._id, stateSlug: 'delhi', citySlug: 'gaziabad',

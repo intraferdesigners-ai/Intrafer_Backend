@@ -29,6 +29,7 @@ const {
   getLandingPages, getLandingPageById, createLandingPage, updateLandingPage, deleteLandingPage, matchCheck,
   getLandingPageCategories, uploadLandingPageImage, createPreviewToken,
   duplicateLandingPage, bulkCreateLandingPages, bulkLandingPageAction,
+  getLandingPageVersions, getLandingPageVersion,
 } = require('../controllers/landingPage.controller');
 const { upload } = require('../middleware/upload');
 const { uploadLimiter, adminBulkLimiter } = require('../middleware/rateLimiter');
@@ -114,6 +115,9 @@ router.post(
 router.post('/landing-pages/bulk',          ...isAdmin, requirePermission('manage_pages'), adminBulkLimiter, auditLog('Bulk create landing pages'), bulkCreateLandingPages);
 router.post('/landing-pages/bulk-action',   ...isAdmin, requirePermission('manage_pages'), adminBulkLimiter, auditLog('Bulk landing page action'), bulkLandingPageAction);
 router.post('/landing-pages/:id/duplicate', ...isAdmin, requirePermission('manage_pages'), adminBulkLimiter, auditLog('Duplicate landing page'), duplicateLandingPage);
+// Version history — read-only, so no auditLog.
+router.get('/landing-pages/:id/versions',            ...isAdmin, requirePermission('manage_pages'), getLandingPageVersions);
+router.get('/landing-pages/:id/versions/:versionId', ...isAdmin, requirePermission('manage_pages'), getLandingPageVersion);
 router.get('/landing-pages/:id',         ...isAdmin, requirePermission('manage_pages'), getLandingPageById);
 // Read-only (mints a signed draft-preview link), so no auditLog. No
 // admin-write limiter exists besides uploadLimiter (uploads only) —
