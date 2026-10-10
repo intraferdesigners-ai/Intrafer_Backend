@@ -13,6 +13,9 @@ const PERMISSION_KEYS = [
   'manage_settings',
   'manage_taxonomy',
   'manage_portfolio',
+  // Admin-managed landing pages. Super admins pass every check already;
+  // existing non-super admins don't have this until a super admin grants it.
+  'manage_pages',
 ];
 
 module.exports = { PERMISSION_KEYS };

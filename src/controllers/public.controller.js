@@ -451,4 +451,4 @@ const getStyleCounts = catchAsync(async (req, res) => {
   return success(res, { counts });
 });
 
-module.exports = { getVendors, getVendorById, getVendorsByIds, getVendorProjects, getProjectById, getSimilarVendors, getGallery, getStats, getFeaturedProjects, getRelatedProjects, getHomepageContent, getSiteReviews, getStyleCounts };
+module.exports = { getVendors, getVendorById, getVendorsByIds, getVendorProjects, getProjectById, getSimilarVendors, getGallery, getStats, getFeaturedProjects, getRelatedProjects, getHomepageContent, getSiteReviews, getStyleCounts, attachCardImages };

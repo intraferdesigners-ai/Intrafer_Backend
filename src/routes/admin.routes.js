@@ -25,6 +25,9 @@ const {
 const {
   getAllTemplates, updateTemplate,
 } = require('../controllers/emailTemplate.controller');
+const {
+  getLandingPages, getLandingPageById, createLandingPage, updateLandingPage, deleteLandingPage, matchCheck,
+} = require('../controllers/landingPage.controller');
 const { protect } = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 const requirePermission = require('../middleware/requirePermission');
@@ -87,5 +90,12 @@ router.get('/projects',               ...isAdmin, requirePermission('manage_port
 router.get('/projects/:id',           ...isAdmin, requirePermission('manage_portfolio'), getProjectById);
 router.get('/subscriptions',          ...isAdmin, requirePermission('view_analytics'), getAllSubscriptions);
 router.put('/projects/:id/feature',   ...isAdmin, requirePermission('manage_portfolio'), auditLog('Toggle project featured'), toggleProjectFeatured);
+// /landing-pages/match-check MUST be before /landing-pages/:id to avoid route conflict
+router.get('/landing-pages',             ...isAdmin, requirePermission('manage_pages'), getLandingPages);
+router.get('/landing-pages/match-check', ...isAdmin, requirePermission('manage_pages'), matchCheck);
+router.get('/landing-pages/:id',         ...isAdmin, requirePermission('manage_pages'), getLandingPageById);
+router.post('/landing-pages',            ...isAdmin, requirePermission('manage_pages'), auditLog('Create landing page'), createLandingPage);
+router.put('/landing-pages/:id',         ...isAdmin, requirePermission('manage_pages'), auditLog('Update landing page'), updateLandingPage);
+router.delete('/landing-pages/:id',      ...isAdmin, requirePermission('manage_pages'), auditLog('Delete landing page'), deleteLandingPage);
 
 module.exports = router;
