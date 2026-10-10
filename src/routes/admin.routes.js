@@ -27,7 +27,10 @@ const {
 } = require('../controllers/emailTemplate.controller');
 const {
   getLandingPages, getLandingPageById, createLandingPage, updateLandingPage, deleteLandingPage, matchCheck,
+  getLandingPageCategories, uploadLandingPageImage,
 } = require('../controllers/landingPage.controller');
+const { upload } = require('../middleware/upload');
+const { uploadLimiter } = require('../middleware/rateLimiter');
 const { protect } = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 const requirePermission = require('../middleware/requirePermission');
@@ -90,9 +93,21 @@ router.get('/projects',               ...isAdmin, requirePermission('manage_port
 router.get('/projects/:id',           ...isAdmin, requirePermission('manage_portfolio'), getProjectById);
 router.get('/subscriptions',          ...isAdmin, requirePermission('view_analytics'), getAllSubscriptions);
 router.put('/projects/:id/feature',   ...isAdmin, requirePermission('manage_portfolio'), auditLog('Toggle project featured'), toggleProjectFeatured);
-// /landing-pages/match-check MUST be before /landing-pages/:id to avoid route conflict
+// /landing-pages/match-check and /categories MUST be before /landing-pages/:id to avoid route conflict
 router.get('/landing-pages',             ...isAdmin, requirePermission('manage_pages'), getLandingPages);
 router.get('/landing-pages/match-check', ...isAdmin, requirePermission('manage_pages'), matchCheck);
+router.get('/landing-pages/categories',  ...isAdmin, requirePermission('manage_pages'), getLandingPageCategories);
+// Banner/OG images for the landing page editor. Own admin-gated route rather
+// than /upload/banner (protect-only, and writes to the vendor banners
+// folder). A rejected file (wrong type, too large) is a 400 here, not the
+// errorHandler's generic 500.
+router.post(
+  '/landing-pages/upload',
+  ...isAdmin, requirePermission('manage_pages'), uploadLimiter,
+  (req, res, next) => { req.uploadFolder = 'landing-pages'; next(); },
+  (req, res, next) => upload.single('image')(req, res, (err) => (err ? error(res, err.message, 400) : next())),
+  uploadLandingPageImage
+);
 router.get('/landing-pages/:id',         ...isAdmin, requirePermission('manage_pages'), getLandingPageById);
 router.post('/landing-pages',            ...isAdmin, requirePermission('manage_pages'), auditLog('Create landing page'), createLandingPage);
 router.put('/landing-pages/:id',         ...isAdmin, requirePermission('manage_pages'), auditLog('Update landing page'), updateLandingPage);

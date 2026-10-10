@@ -6,6 +6,7 @@ const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
 const { slugify } = require('../utils/slug');
+const { getFileUrl } = require('../middleware/upload');
 const { resolveCategory } = require('../utils/resolveTaxonomy');
 const { attachCardImages } = require('./public.controller');
 const {
@@ -37,8 +38,23 @@ const duplicateMessage = (page) =>
 // gets a clear 409 instead of errorHandler's generic "category already in
 // use"; the E11000 catch in save() below covers the race between check
 // and write.
+//
+// Validation failures are answered here too, with a per-field `errors` map
+// ({ 'seo.metaTitle': '...', 'sections.0.title': '...' }) alongside the
+// usual joined message, so the editor can show each next to its field.
 async function saveWithDuplicateCheck(res, page) {
-  await page.validate();
+  try {
+    await page.validate();
+  } catch (err) {
+    if (err.name !== 'ValidationError') throw err;
+    const errors = {};
+    for (const [path, e] of Object.entries(err.errors)) {
+      // Cast/nested errors repeat on parent paths (e.g. 'sections' and
+      // 'sections.0.type') — keep only the most specific ones.
+      if (!Object.keys(err.errors).some((other) => other.startsWith(`${path}.`))) errors[path] = e.message;
+    }
+    return error(res, Object.values(errors).join(', '), 400, errors);
+  }
   const clash = await LandingPage.exists({
     _id: { $ne: page._id },
     category: page.category,
@@ -146,6 +162,19 @@ const deleteLandingPage = catchAsync(async (req, res) => {
   if (!page) return error(res, 'Landing page not found.', 404);
   return success(res, {}, 'Landing page deleted.');
 });
+
+// Active service categories for the editor's category dropdown and the list
+// filter — create/list take a category ObjectId, and the only other admin
+// category endpoint (/admin/categories) serves the older Category model.
+const getLandingPageCategories = catchAsync(async (req, res) => {
+  const categories = await ServiceCategory.find({ isActive: true }).select('_id slug name').sort({ name: 1 });
+  return success(res, { categories });
+});
+
+const uploadLandingPageImage = (req, res) => {
+  if (!req.file) return error(res, 'No file uploaded.', 400);
+  return success(res, { url: getFileUrl(req.file) }, 'Uploaded successfully.');
+};
 
 // Editor hint + duplicate warning. Never blocks — only informs.
 // `category` is an ObjectId (or a slug); state/city are free text or slugs.
@@ -282,5 +311,6 @@ const getLandingPagesSitemap = catchAsync(async (req, res) => {
 
 module.exports = {
   getLandingPages, getLandingPageById, createLandingPage, updateLandingPage, deleteLandingPage, matchCheck,
+  getLandingPageCategories, uploadLandingPageImage,
   getPublicLandingPage, getLandingPagesSitemap,
 };
