@@ -97,4 +97,17 @@ const newsletterLimiter = rateLimit({
   message: { success: false, message: 'Too many subscription attempts, please try again later.' },
 });
 
-module.exports = { globalLimiter, otpLimiter, authLimiter, newsletterLimiter, uploadLimiter };
+// Landing-page duplicate / bulk create / bulk action (admin). Each request
+// can write up to 50-100 documents (and a bulk dry run counts vendors for
+// up to 50 cities), so these get their own per-admin ceiling on top of
+// globalLimiter — generous for real editing, a cap on runaway scripts.
+const adminBulkLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many bulk requests in a short time. Please wait a few minutes and try again.' },
+  keyGenerator: keyByUserOrIP,
+});
+
+module.exports = { globalLimiter, otpLimiter, authLimiter, newsletterLimiter, uploadLimiter, adminBulkLimiter };

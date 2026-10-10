@@ -11,6 +11,9 @@ const auditLogSchema = new mongoose.Schema(
     targetId:   { type: String, default: null },
     statusCode: { type: Number, required: true },
     ip:         { type: String, default: '' },
+    // Optional structured context a handler leaves in res.locals.auditDetails
+    // (e.g. a bulk action's counts and ids). Absent on most entries.
+    details:    { type: mongoose.Schema.Types.Mixed, default: undefined },
   },
   { timestamps: true }
 );

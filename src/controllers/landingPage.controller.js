@@ -11,6 +11,9 @@ const { resolveCategory } = require('../utils/resolveTaxonomy');
 const { attachCardImages } = require('./public.controller');
 const { signPreviewToken, verifyPreviewToken } = require('../utils/landingPreviewToken');
 const {
+  copyContent, normaliseLocation, findSourceMentions, MAX_LOCATION_LENGTH,
+} = require('../utils/landingPageCopy');
+const {
   VENDOR_SORT, buildVendorFilter, placeFilter, nameFilter,
   computeIndexable, resolvePlaceWithAliases, isSimilarSlug,
 } = require('../services/landingPage.service');
@@ -88,17 +91,23 @@ function validationMessage(path, e) {
 // Validation failures are answered here too, with a per-field `errors` map
 // ({ 'seo.metaTitle': '...', 'sections.0.title': '...' }) alongside the
 // usual joined message, so the editor can show each next to its field.
+// ValidationError -> { path: plain-English message }. Cast/nested errors
+// repeat on parent paths (e.g. 'sections' and 'sections.0.type') — keep
+// only the most specific ones.
+function validationErrors(err) {
+  const errors = {};
+  for (const [path, e] of Object.entries(err.errors)) {
+    if (!Object.keys(err.errors).some((other) => other.startsWith(`${path}.`))) errors[path] = validationMessage(path, e);
+  }
+  return errors;
+}
+
 async function saveWithDuplicateCheck(res, page) {
   try {
     await page.validate();
   } catch (err) {
     if (err.name !== 'ValidationError') throw err;
-    const errors = {};
-    for (const [path, e] of Object.entries(err.errors)) {
-      // Cast/nested errors repeat on parent paths (e.g. 'sections' and
-      // 'sections.0.type') — keep only the most specific ones.
-      if (!Object.keys(err.errors).some((other) => other.startsWith(`${path}.`))) errors[path] = validationMessage(path, e);
-    }
+    const errors = validationErrors(err);
     return error(res, Object.values(errors).join(', '), 400, errors);
   }
   const clash = await LandingPage.exists({
@@ -238,6 +247,37 @@ const createPreviewToken = catchAsync(async (req, res) => {
   return success(res, { token, expiresAt, path });
 });
 
+// `candidates` (same category + state) that are probably the same city as
+// stateSlug/citySlug: same slug, a near-identical name, or the same Place
+// via aliases ("Bangalore" vs "Bengaluru"). Shared by match-check and
+// bulk create.
+async function findSimilarPages(candidates, stateSlug, citySlug) {
+  const aliasPlace = await resolvePlaceWithAliases(stateSlug, citySlug);
+  const similar = [];
+  for (const candidate of candidates) {
+    let reason = null;
+    if (candidate.citySlug === citySlug) {
+      reason = 'same-slug';
+    } else if (isSimilarSlug(candidate.citySlug, citySlug)) {
+      reason = 'similar-name';
+    } else if (aliasPlace && candidate.citySlug) {
+      const candidatePlace = await resolvePlaceWithAliases(candidate.stateSlug, candidate.citySlug);
+      if (candidatePlace && candidatePlace._id.equals(aliasPlace._id)) reason = 'same-place';
+    }
+    if (reason) {
+      similar.push({
+        _id: candidate._id,
+        state: candidate.state,
+        city: candidate.city,
+        citySlug: candidate.citySlug,
+        status: candidate.status,
+        reason,
+      });
+    }
+  }
+  return similar;
+}
+
 // Editor hint + duplicate warning. Never blocks — only informs.
 // `category` is an ObjectId (or a slug); state/city are free text or slugs.
 // `excludeId` leaves the page being edited out of `similar`.
@@ -266,29 +306,7 @@ const matchCheck = catchAsync(async (req, res) => {
     ...(excludeId && mongoose.isValidObjectId(excludeId) ? { _id: { $ne: excludeId } } : {}),
   }).select('state city stateSlug citySlug status level');
 
-  const aliasPlace = await resolvePlaceWithAliases(stateSlug, citySlug);
-  const similar = [];
-  for (const candidate of candidates) {
-    let reason = null;
-    if (candidate.citySlug === citySlug) {
-      reason = 'same-slug';
-    } else if (isSimilarSlug(candidate.citySlug, citySlug)) {
-      reason = 'similar-name';
-    } else if (aliasPlace && candidate.citySlug) {
-      const candidatePlace = await resolvePlaceWithAliases(candidate.stateSlug, candidate.citySlug);
-      if (candidatePlace && candidatePlace._id.equals(aliasPlace._id)) reason = 'same-place';
-    }
-    if (reason) {
-      similar.push({
-        _id: candidate._id,
-        state: candidate.state,
-        city: candidate.city,
-        citySlug: candidate.citySlug,
-        status: candidate.status,
-        reason,
-      });
-    }
-  }
+  const similar = await findSimilarPages(candidates, stateSlug, citySlug);
 
   return success(res, {
     matchedPlace: matchedPlace ? matchedPlace.name : null,
@@ -296,6 +314,240 @@ const matchCheck = catchAsync(async (req, res) => {
     vendorsByName,
     similar,
   });
+});
+
+// ── Duplicate / bulk (Phase 4A) ──────────────────────────────────────────
+// Every page these create is a DRAFT built through the model (so
+// pre('validate') strips HTML, derives slugs and applies the CTA-pair and
+// https rules); nothing goes live without the publish action.
+
+const MAX_BULK_ITEMS = 50;
+const MAX_BULK_ACTION_IDS = 100;
+const BULK_ACTIONS = ['publish', 'unpublish', 'delete'];
+const SIMILAR_CONCURRENCY = 5;
+
+// A new draft for (state, city) carrying `template`'s content, or blank
+// when there's no template.
+function buildDraft({ template, category, state, city, userId }) {
+  return new LandingPage({
+    ...(template ? copyContent(template) : {}),
+    category,
+    state,
+    city,
+    status: 'draft',
+    createdBy: userId,
+    updatedBy: userId,
+  });
+}
+
+// fn over items, at most `limit` in flight; results in input order.
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+// One { state, city } -> { state, city, stateSlug, citySlug } or
+// { ..., reason } when unusable. Slugs come from the HTML-stripped text,
+// exactly as pre('validate') derives them.
+function normaliseItem(raw) {
+  const state = normaliseLocation(raw?.state);
+  const city = normaliseLocation(raw?.city);
+  const out = { state, city };
+  if (!state) return { ...out, reason: 'State is required.' };
+  if (!city) return { ...out, reason: 'City is required.' };
+  if (state.length > MAX_LOCATION_LENGTH) return { ...out, reason: `State must be ${MAX_LOCATION_LENGTH} characters or fewer.` };
+  if (city.length > MAX_LOCATION_LENGTH) return { ...out, reason: `City must be ${MAX_LOCATION_LENGTH} characters or fewer.` };
+  const stateSlug = slugify(LandingPage.stripHtml(state));
+  const citySlug = slugify(LandingPage.stripHtml(city));
+  if (!stateSlug) return { ...out, reason: 'State must contain letters or digits.' };
+  if (!citySlug) return { ...out, reason: 'City must contain letters or digits.' };
+  return { ...out, stateSlug, citySlug };
+}
+
+// POST /admin/landing-pages/:id/duplicate { state, city } -> 201 { page, warnings }
+const duplicateLandingPage = catchAsync(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return error(res, 'Landing page not found.', 404);
+  const source = await LandingPage.findById(req.params.id);
+  if (!source) return error(res, 'Landing page not found.', 404);
+
+  const state = normaliseLocation(req.body?.state);
+  const city = normaliseLocation(req.body?.city);
+  if (!state || !city) return error(res, 'state and city are required.', 400);
+
+  const page = buildDraft({ template: source, category: source.category, state, city, userId: req.user._id });
+  const failed = await saveWithDuplicateCheck(res, page);
+  if (failed) return failed;
+
+  return success(res, { page, warnings: findSourceMentions(source, { state, city }) }, 'Draft created.', 201);
+});
+
+// POST /admin/landing-pages/bulk { templateId?, category?, items, dryRun? }
+// Per item: ok | invalid | exists | duplicate_in_batch | similar. dryRun
+// adds vendorCount and writes nothing (and isn't audited). A real run
+// creates drafts for ok + similar items, keeps going past per-item
+// failures, and is audited once with the counts.
+const bulkCreateLandingPages = catchAsync(async (req, res) => {
+  const { templateId, category: categoryParam, items, dryRun } = req.body || {};
+  const isDryRun = dryRun === true;
+  if (!Array.isArray(items) || items.length < 1 || items.length > MAX_BULK_ITEMS) {
+    return error(res, `Send between 1 and ${MAX_BULK_ITEMS} locations.`, 400);
+  }
+  if (!templateId && !categoryParam) return error(res, 'Choose a category or a template.', 400);
+
+  let template = null;
+  if (templateId) {
+    if (!mongoose.isValidObjectId(templateId)) return error(res, 'Template not found.', 404);
+    template = await LandingPage.findById(templateId);
+    if (!template) return error(res, 'Template not found.', 404);
+  }
+  if (categoryParam && (!mongoose.isValidObjectId(categoryParam) || !(await ServiceCategory.exists({ _id: categoryParam })))) {
+    return error(res, 'Category not found.', 400);
+  }
+  const category = categoryParam || String(template.category);
+  const warnings = [];
+  if (template && categoryParam && String(template.category) !== String(categoryParam)) {
+    warnings.push('The template is from a different category.');
+  }
+
+  // Classify: invalid, then duplicate_in_batch, then exists / similar.
+  const results = items.map((raw, index) => {
+    const item = normaliseItem(raw);
+    return item.reason
+      ? { index, state: item.state, city: item.city, status: 'invalid', reason: item.reason }
+      : { index, ...item, status: 'ok' };
+  });
+  const seen = new Map();
+  for (const r of results) {
+    if (r.status !== 'ok') continue;
+    const key = `${r.stateSlug}/${r.citySlug}`;
+    if (seen.has(key)) {
+      r.status = 'duplicate_in_batch';
+      r.duplicateOf = seen.get(key);
+    } else {
+      seen.set(key, r.index);
+    }
+  }
+
+  const live = results.filter((r) => r.status === 'ok');
+  const stateSlugs = [...new Set(live.map((r) => r.stateSlug))];
+  const existing = stateSlugs.length
+    ? await LandingPage.find({ category, stateSlug: { $in: stateSlugs } }).select('state city stateSlug citySlug status level')
+    : [];
+  await mapLimit(live, SIMILAR_CONCURRENCY, async (r) => {
+    const inState = existing.filter((p) => p.stateSlug === r.stateSlug);
+    const same = inState.find((p) => p.citySlug === r.citySlug);
+    if (same) {
+      r.status = 'exists';
+      r.existingId = same._id;
+      return;
+    }
+    const similar = (await findSimilarPages(inState, r.stateSlug, r.citySlug)).find((p) => p.reason !== 'same-slug');
+    if (similar) {
+      r.status = 'similar';
+      r.similarTo = { _id: similar._id, city: similar.city, state: similar.state, reason: similar.reason };
+    }
+  });
+
+  if (isDryRun) {
+    res.locals.skipAudit = true;
+    await mapLimit(results, SIMILAR_CONCURRENCY, async (r) => {
+      if (r.status === 'invalid') return;
+      const { filter } = await buildVendorFilter(category, r.stateSlug, r.citySlug);
+      r.vendorCount = await Vendor.countDocuments(filter);
+    });
+    const summary = { total: results.length };
+    for (const r of results) summary[r.status] = (summary[r.status] || 0) + 1;
+    return success(res, { results, summary, warnings });
+  }
+
+  // Sequential writes: ≤50 items, and each save is validated on its own.
+  for (const r of results) {
+    if (r.status !== 'ok' && r.status !== 'similar') continue;
+    const page = buildDraft({ template, category, state: r.state, city: r.city, userId: req.user._id });
+    try {
+      await page.validate();
+      await page.save();
+      r.status = 'created';
+      r.pageId = page._id;
+      r.warnings = template ? findSourceMentions(template, r) : [];
+    } catch (err) {
+      if (err.code === 11000) {
+        r.status = 'exists';
+      } else if (err.name === 'ValidationError') {
+        r.status = 'failed';
+        r.reason = Object.values(validationErrors(err)).join(', ');
+      } else {
+        r.status = 'failed';
+        r.reason = 'Something went wrong creating this page.';
+      }
+    }
+  }
+
+  const created = results.filter((r) => r.status === 'created').length;
+  const failed = results.filter((r) => r.status === 'failed').length;
+  const summary = { created, failed, skipped: results.length - created - failed };
+  res.locals.auditDetails = { ...summary, templateId: template ? String(template._id) : null, category: String(category) };
+  return success(res, { results, summary, warnings });
+});
+
+// POST /admin/landing-pages/bulk-action { ids, action } -> per-id
+// ok | unchanged | failed | not_found. Publish/unpublish load and save each
+// page, so model validation runs; a page that fails it is left unchanged.
+const bulkLandingPageAction = catchAsync(async (req, res) => {
+  const { ids, action } = req.body || {};
+  if (!BULK_ACTIONS.includes(action)) return error(res, `action must be one of: ${BULK_ACTIONS.join(', ')}.`, 400);
+  if (!Array.isArray(ids) || ids.length < 1 || ids.length > MAX_BULK_ACTION_IDS) {
+    return error(res, `Select between 1 and ${MAX_BULK_ACTION_IDS} pages.`, 400);
+  }
+
+  const unique = [...new Set(ids.map(String))];
+  const validIds = unique.filter((id) => mongoose.isValidObjectId(id));
+  const docs = validIds.length ? await LandingPage.find({ _id: { $in: validIds } }) : [];
+  const byId = new Map(docs.map((d) => [String(d._id), d]));
+
+  const results = [];
+  for (const id of unique) {
+    const page = byId.get(id);
+    if (!page) {
+      results.push({ id, status: 'not_found' });
+      continue;
+    }
+    try {
+      if (action === 'delete') {
+        await LandingPage.deleteOne({ _id: page._id });
+        results.push({ id, status: 'ok' });
+        continue;
+      }
+      const target = action === 'publish' ? 'published' : 'draft';
+      if (page.status === target) {
+        results.push({ id, status: 'unchanged' });
+        continue;
+      }
+      page.status = target;
+      page.updatedBy = req.user._id;
+      await page.validate(); // pre('validate') also sets publishedAt on first publish
+      await page.save();
+      results.push({ id, status: 'ok' });
+    } catch (err) {
+      const message = err.name === 'ValidationError'
+        ? Object.values(validationErrors(err)).join(', ')
+        : 'Something went wrong.';
+      results.push({ id, status: 'failed', message });
+    }
+  }
+
+  const summary = { ok: 0, unchanged: 0, failed: 0, not_found: 0 };
+  for (const r of results) summary[r.status] += 1;
+  res.locals.auditDetails = { action, ...summary, ids: unique.slice(0, MAX_BULK_ACTION_IDS) };
+  return success(res, { results, summary });
 });
 
 // ── Public ───────────────────────────────────────────────────────────────
@@ -391,5 +643,6 @@ const getLandingPagesSitemap = catchAsync(async (req, res) => {
 module.exports = {
   getLandingPages, getLandingPageById, createLandingPage, updateLandingPage, deleteLandingPage, matchCheck,
   getLandingPageCategories, uploadLandingPageImage, createPreviewToken,
+  duplicateLandingPage, bulkCreateLandingPages, bulkLandingPageAction,
   getPublicLandingPage, getLandingPagesSitemap,
 };

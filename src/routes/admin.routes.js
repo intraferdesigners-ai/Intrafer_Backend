@@ -28,9 +28,10 @@ const {
 const {
   getLandingPages, getLandingPageById, createLandingPage, updateLandingPage, deleteLandingPage, matchCheck,
   getLandingPageCategories, uploadLandingPageImage, createPreviewToken,
+  duplicateLandingPage, bulkCreateLandingPages, bulkLandingPageAction,
 } = require('../controllers/landingPage.controller');
 const { upload } = require('../middleware/upload');
-const { uploadLimiter } = require('../middleware/rateLimiter');
+const { uploadLimiter, adminBulkLimiter } = require('../middleware/rateLimiter');
 const { protect } = require('../middleware/auth');
 const rbac = require('../middleware/rbac');
 const requirePermission = require('../middleware/requirePermission');
@@ -108,6 +109,11 @@ router.post(
   (req, res, next) => upload.single('image')(req, res, (err) => (err ? error(res, err.message, 400) : next())),
   uploadLandingPageImage
 );
+// Duplicate / bulk (Phase 4A) — always create drafts; one audit entry per
+// request (bulk create's dry run isn't audited, it writes nothing).
+router.post('/landing-pages/bulk',          ...isAdmin, requirePermission('manage_pages'), adminBulkLimiter, auditLog('Bulk create landing pages'), bulkCreateLandingPages);
+router.post('/landing-pages/bulk-action',   ...isAdmin, requirePermission('manage_pages'), adminBulkLimiter, auditLog('Bulk landing page action'), bulkLandingPageAction);
+router.post('/landing-pages/:id/duplicate', ...isAdmin, requirePermission('manage_pages'), adminBulkLimiter, auditLog('Duplicate landing page'), duplicateLandingPage);
 router.get('/landing-pages/:id',         ...isAdmin, requirePermission('manage_pages'), getLandingPageById);
 // Read-only (mints a signed draft-preview link), so no auditLog. No
 // admin-write limiter exists besides uploadLimiter (uploads only) —
