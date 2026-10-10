@@ -22,7 +22,7 @@ const LandingPage = require('../src/models/LandingPage.model');
 const ServiceCategory = require('../src/models/ServiceCategory.model');
 const Vendor = require('../src/models/Vendor.model');
 const {
-  duplicateLandingPage, bulkCreateLandingPages, bulkLandingPageAction,
+  duplicateLandingPage, bulkCreateLandingPages, bulkLandingPageAction, updateLandingPage,
 } = require('../src/controllers/landingPage.controller');
 const { findSourceMentions, copyContent } = require('../src/utils/landingPageCopy');
 
@@ -53,9 +53,12 @@ LandingPage.exists = async (filter) => store.find((p) => !eq(p._id, filter._id?.
   && p.stateSlug === filter.stateSlug && p.citySlug === filter.citySlug) || null;
 LandingPage.deleteOne = async ({ _id }) => { writes.delete += 1; store = store.filter((p) => !eq(p._id, _id)); };
 let raceOnNextSave = false;
-LandingPage.prototype.save = async function save() {
+let lastSave = null; // { modified, validated } of the most recent save()
+LandingPage.prototype.save = async function save(options = {}) {
   writes.save += 1;
-  await this.validate();
+  const validated = options.validateBeforeSave !== false;
+  lastSave = { modified: this.modifiedPaths().filter((p) => !p.includes('.')).sort(), validated };
+  if (validated) await this.validate();
   const obj = this.toObject();
   const clash = store.find((p) => !eq(p._id, obj._id) && eq(p.category, obj.category) && p.stateSlug === obj.stateSlug && p.citySlug === obj.citySlug);
   if (clash || raceOnNextSave) {
@@ -102,7 +105,7 @@ async function check(name, fn) {
     console.log(`PASS  ${name}`);
   } catch (err) {
     failures += 1;
-    console.log(`FAIL  ${name}\n      ${err.stack.split('\n').slice(0, 2).join('\n      ')}`);
+    console.log(`FAIL  ${name}\n      ${err.message.split('\n').join('\n      ')}`);
   }
 }
 
@@ -333,6 +336,64 @@ async function check(name, fn) {
     const r = await action(many.slice(0, 100), 'unpublish');
     assert.strictEqual(r.locals.auditDetails.ids.length, 100);
     assert.strictEqual(r.body.data.summary.not_found, 100);
+  });
+
+  // ── Unpublish is never blocked by validation ───────────────────────────
+  // Live, but invalid by today's rules: CTA label without URL, an http://
+  // image and raw HTML (inserted raw, as an old page would be).
+  const brokenId = String(new mongoose.Types.ObjectId());
+  const broken = {
+    ...JSON.parse(JSON.stringify(pune)), _id: brokenId, city: 'Broken', citySlug: 'broken', status: 'published',
+    heading: '<b>Raw</b> heading', banner: { ...pune.banner, imageUrl: 'http://old.example/x.jpg', ctaLabel: 'Call us', ctaUrl: '' },
+  };
+  store.push(broken);
+  const snapshot = (id) => {
+    const { status, updatedBy, updatedAt, ...rest } = JSON.parse(JSON.stringify(store.find((p) => eq(p._id, id))));
+    return rest;
+  };
+
+  await check('bulk unpublish of a page invalid by today\'s rules → ok, draft, nothing else touched, no validation', async () => {
+    const before = snapshot(brokenId);
+    const r = await action([brokenId], 'unpublish');
+    assert.deepStrictEqual(r.body.data.results, [{ id: brokenId, status: 'ok' }]);
+    const after = store.find((p) => eq(p._id, brokenId));
+    assert.strictEqual(after.status, 'draft');
+    assert.strictEqual(String(after.updatedBy), String(ADMIN));
+    assert.deepStrictEqual(snapshot(brokenId), before, 'a field other than status/updatedBy changed');
+    assert.strictEqual(after.heading, '<b>Raw</b> heading', 'not re-sanitised');
+    assert.deepStrictEqual(lastSave, { modified: ['status', 'updatedBy'], validated: false });
+  });
+
+  await check('same page: bulk publish still fails with the plain-English messages and stays draft', async () => {
+    const r = await action([brokenId], 'publish');
+    assert.strictEqual(r.body.data.results[0].status, 'failed');
+    // Both of today's rules it breaks — publish re-checks the old image too.
+    assert.strictEqual(r.body.data.results[0].message, `${LandingPage.CTA_PAIR_MESSAGE}, banner.imageUrl must be an https:// URL.`);
+    assert.strictEqual(store.find((p) => eq(p._id, brokenId)).status, 'draft');
+  });
+
+  await check('single-page unpublish (PUT { status: "draft" }) succeeds on the invalid page, touching only status/updatedBy', async () => {
+    store.find((p) => eq(p._id, brokenId)).status = 'published';
+    const before = snapshot(brokenId);
+    const otherAdmin = new mongoose.Types.ObjectId();
+    const r = await call(updateLandingPage, { params: { id: brokenId }, body: { status: 'draft' }, user: { _id: otherAdmin } });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    assert.strictEqual(String(store.find((p) => eq(p._id, brokenId)).updatedBy), String(otherAdmin));
+    assert.strictEqual(store.find((p) => eq(p._id, brokenId)).status, 'draft');
+    assert.deepStrictEqual(snapshot(brokenId), before);
+    assert.deepStrictEqual(lastSave, { modified: ['status', 'updatedBy'], validated: false });
+  });
+
+  await check('single-page PUT with status draft PLUS other fields still validates (normal save path)', async () => {
+    const r = await call(updateLandingPage, { params: { id: brokenId }, body: { status: 'draft', heading: 'New' } });
+    assert.strictEqual(r.status, 400);
+    assert.strictEqual(r.body.errors['banner.ctaUrl'], LandingPage.CTA_PAIR_MESSAGE);
+  });
+
+  await check('single-page publish (PUT { status: "published" }) still validates', async () => {
+    const r = await call(updateLandingPage, { params: { id: brokenId }, body: { status: 'published' } });
+    assert.strictEqual(r.status, 400);
+    assert.strictEqual(store.find((p) => eq(p._id, brokenId)).status, 'draft');
   });
 
   // ── Audit middleware ───────────────────────────────────────────────────

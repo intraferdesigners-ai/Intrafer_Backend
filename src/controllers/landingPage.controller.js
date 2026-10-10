@@ -126,6 +126,17 @@ async function saveWithDuplicateCheck(res, page) {
   return null;
 }
 
+// Unpublish is the emergency takedown, so it must never be blocked by
+// validation — a page that breaks today's rules (an old http:// image, a
+// CTA label without a URL) still has to come down. Only `status` and
+// `updatedBy` change; validation (and with it pre('validate')'s
+// re-sanitising) is skipped, and save() writes just those modified paths.
+async function unpublishPage(page, userId) {
+  page.status = 'draft';
+  page.updatedBy = userId;
+  await page.save({ validateBeforeSave: false });
+}
+
 // ── Admin ────────────────────────────────────────────────────────────────
 
 const getLandingPages = catchAsync(async (req, res) => {
@@ -186,6 +197,11 @@ const updateLandingPage = catchAsync(async (req, res) => {
   if (!page) return error(res, 'Landing page not found.', 404);
 
   const data = pickEditable(req.body);
+  // The editor's Unpublish sends exactly { status: 'draft' }.
+  if (Object.keys(data).length === 1 && data.status === 'draft') {
+    await unpublishPage(page, req.user._id);
+    return success(res, { page }, 'Landing page updated.');
+  }
   if (data.category !== undefined) {
     if (!mongoose.isValidObjectId(data.category) || !(await ServiceCategory.exists({ _id: data.category }))) {
       return error(res, 'Category not found.', 400);
@@ -499,8 +515,9 @@ const bulkCreateLandingPages = catchAsync(async (req, res) => {
 });
 
 // POST /admin/landing-pages/bulk-action { ids, action } -> per-id
-// ok | unchanged | failed | not_found. Publish/unpublish load and save each
-// page, so model validation runs; a page that fails it is left unchanged.
+// ok | unchanged | failed | not_found. Publish loads and validates each
+// page; one that fails is left unchanged. Unpublish never validates (see
+// unpublishPage).
 const bulkLandingPageAction = catchAsync(async (req, res) => {
   const { ids, action } = req.body || {};
   if (!BULK_ACTIONS.includes(action)) return error(res, `action must be one of: ${BULK_ACTIONS.join(', ')}.`, 400);
@@ -531,10 +548,14 @@ const bulkLandingPageAction = catchAsync(async (req, res) => {
         results.push({ id, status: 'unchanged' });
         continue;
       }
-      page.status = target;
-      page.updatedBy = req.user._id;
-      await page.validate(); // pre('validate') also sets publishedAt on first publish
-      await page.save();
+      if (action === 'unpublish') {
+        await unpublishPage(page, req.user._id);
+      } else {
+        page.status = target;
+        page.updatedBy = req.user._id;
+        await page.validate(); // pre('validate') also sets publishedAt on first publish
+        await page.save();
+      }
       results.push({ id, status: 'ok' });
     } catch (err) {
       const message = err.name === 'ValidationError'
