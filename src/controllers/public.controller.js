@@ -9,6 +9,7 @@ const paginate = require('../utils/paginate');
 const { resolveCategory, resolveState, resolvePlaceInState } = require('../utils/resolveTaxonomy');
 const { meetsIndexThreshold } = require('../utils/indexThreshold');
 const { queryString, containsRegex } = require('../utils/regex');
+const { isObjectId } = require('../utils/objectId');
 const { VISIBLE_VENDOR, PUBLIC_PROJECT, publicProjectFilter, visibleVendorPopulate } = require('../utils/publicVisibility');
 
 const SORT_MAP = {
@@ -181,6 +182,8 @@ const getVendors = catchAsync(async (req, res) => {
 });
 
 const getVendorById = catchAsync(async (req, res) => {
+  // A malformed id is as missing as an unknown one (not a cast error, 500).
+  if (!isObjectId(req.params.id)) return error(res, 'Vendor not found.', 404);
   const vendor = await Vendor.findOne({
     _id: req.params.id,
     isApproved: true,
@@ -205,7 +208,6 @@ const getVendorById = catchAsync(async (req, res) => {
 
 // Same limit as the frontend's compare tray (context/CompareContext.jsx).
 const MAX_COMPARE_IDS = 4;
-const OBJECT_ID = /^[a-f0-9]{24}$/i;
 
 // ?ids=<id>,<id>,... — at most MAX_COMPARE_IDS vendor ObjectIds. Missing or
 // empty -> []. Anything malformed is a 400 rather than a cast error (500):
@@ -224,7 +226,7 @@ const getVendorsByIds = catchAsync(async (req, res) => {
   const idList = [...new Set(ids.split(',').map((id) => id.trim()).filter(Boolean))];
   if (idList.length === 0) return success(res, { vendors: [] });
   if (idList.length > MAX_COMPARE_IDS) return error(res, `Compare at most ${MAX_COMPARE_IDS} vendors at a time.`, 400);
-  if (!idList.every((id) => OBJECT_ID.test(id))) return error(res, 'Invalid vendor id.', 400);
+  if (!idList.every(isObjectId)) return error(res, 'Invalid vendor id.', 400);
 
   const vendors = await Vendor.find({
     _id: { $in: idList },
@@ -236,8 +238,11 @@ const getVendorsByIds = catchAsync(async (req, res) => {
 });
 
 const getVendorProjects = catchAsync(async (req, res) => {
-  // A hidden vendor's projects: the same empty list a nonexistent vendor gets.
-  if (!(await Vendor.exists({ _id: req.params.id, ...VISIBLE_VENDOR }))) return success(res, { projects: [] });
+  // A hidden vendor's projects — or a malformed id's — are the same empty
+  // list a nonexistent vendor gets.
+  if (!isObjectId(req.params.id) || !(await Vendor.exists({ _id: req.params.id, ...VISIBLE_VENDOR }))) {
+    return success(res, { projects: [] });
+  }
   const projects = await Project.find({
     vendorId: req.params.id,
     ...PUBLIC_PROJECT,
@@ -247,6 +252,7 @@ const getVendorProjects = catchAsync(async (req, res) => {
 });
 
 const getProjectById = catchAsync(async (req, res) => {
+  if (!isObjectId(req.params.id)) return error(res, 'Project not found.', 404);
   const project = await Project.findOne({
     _id: req.params.id,
     ...PUBLIC_PROJECT,
@@ -259,6 +265,7 @@ const getProjectById = catchAsync(async (req, res) => {
 });
 
 const getSimilarVendors = catchAsync(async (req, res) => {
+  if (!isObjectId(req.params.id)) return error(res, 'Vendor not found.', 404);
   const current = await Vendor.findById(req.params.id);
   if (!current) return error(res, 'Vendor not found.', 404);
 
@@ -365,6 +372,7 @@ const getFeaturedProjects = catchAsync(async (req, res) => {
 
 const getRelatedProjects = catchAsync(async (req, res) => {
   // Related projects of a hidden project 404 like the project itself does.
+  if (!isObjectId(req.params.id)) return error(res, 'Project not found.', 404);
   const visible = await publicProjectFilter();
   const current = await Project.findOne({ ...visible, _id: req.params.id });
   if (!current) return error(res, 'Project not found.', 404);

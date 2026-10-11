@@ -12,6 +12,7 @@ const { sendVendorApprovedEmail, sendVendorRejectedEmail } = require('../service
 const notifService = require('../services/notification.service');
 const { PERMISSION_KEYS } = require('../constants/permissions');
 const cache = require('../utils/revalidate');
+const { isObjectId } = require('../utils/objectId');
 
 const SETTINGS_DEFAULTS = {
   site_name: 'Intrafer',
@@ -556,6 +557,9 @@ const moderateProject = catchAsync(async (req, res) => {
 
 const getAllProjects = catchAsync(async (req, res) => {
   const { status, vendorId, search } = req.query;
+  if (vendorId !== undefined && vendorId !== '' && !isObjectId(vendorId)) {
+    return error(res, 'vendorId must be a vendor id.', 400);
+  }
 
   const filter = {};
   if (status) filter.moderationStatus = status;

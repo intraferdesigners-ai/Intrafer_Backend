@@ -5,6 +5,7 @@ const Vendor = require('../models/Vendor.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const cache = require('../utils/revalidate');
+const { isObjectId } = require('../utils/objectId');
 
 // Longer than auth.controller.js's password-reset window (30 minutes) on
 // purpose: an enquirer won't necessarily open a "leave a review" email right
@@ -96,6 +97,7 @@ exports.submitReviewViaToken = catchAsync(async (req, res) => {
 });
 
 exports.getVendorReviews = catchAsync(async (req, res) => {
+  if (!isObjectId(req.params.vendorId)) return error(res, 'Vendor not found.', 404);
   const vendor = await Vendor.findById(req.params.vendorId);
   if (!vendor) return error(res, 'Vendor not found.', 404);
 
