@@ -20,7 +20,10 @@ if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(URI)) {
   process.exit(1);
 }
 
+process.env.JWT_ACCESS_SECRET = 'test-only-jwt-secret';
+
 const app = require('../src/app');
+const jwt = require('jsonwebtoken');
 const User = require('../src/models/User.model');
 const Vendor = require('../src/models/Vendor.model');
 const Project = require('../src/models/Project.model');
@@ -119,6 +122,18 @@ async function test(name, fn) {
 
     await test('stats projectCount (home/about) counts only visible projects', async () => {
       assert.strictEqual((await get('/stats')).body.data.projectCount, 2);
+    });
+
+    await test('admin projects list carries each vendor\'s visibility fields (read-only)', async () => {
+      const admin = await User.create({ name: 'Admin', email: 'vis-admin@local.test', passwordHash: 'x', role: 'admin', isSuperAdmin: true });
+      const res = await fetch(`${base_}`.replace('/public', '/admin/projects?limit=50'), {
+        headers: { authorization: `Bearer ${jwt.sign({ id: String(admin._id) }, process.env.JWT_ACCESS_SECRET)}` },
+      });
+      assert.strictEqual(res.status, 200);
+      const byTitle = Object.fromEntries((await res.json()).data.projects.map((p) => [p.title, p.vendorId]));
+      assert.deepStrictEqual(byTitle['Approved project'], { _id: String(approved._id), businessName: 'Approved Studio', isApproved: true, isListingEnabled: true, approvalStatus: 'approved' });
+      assert.deepStrictEqual(byTitle['Suspended vendor project'], { _id: String(suspended._id), businessName: 'Suspended Studio', isApproved: false, isListingEnabled: true, approvalStatus: 'rejected' });
+      assert.deepStrictEqual(byTitle['Unlisted vendor project'], { _id: String(unlisted._id), businessName: 'Unlisted Studio', isApproved: true, isListingEnabled: false, approvalStatus: 'approved' });
     });
 
     await test('re-approving / re-listing a vendor brings its projects back', async () => {

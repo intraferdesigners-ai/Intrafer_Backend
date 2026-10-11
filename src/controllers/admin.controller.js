@@ -565,8 +565,11 @@ const getAllProjects = catchAsync(async (req, res) => {
   const total = await Project.countDocuments(filter);
   const { skip, limit, page, totalPages } = paginate(req.query, total);
 
+  // Vendor visibility fields (read-only) so the list can flag approved
+  // projects that aren't public because their vendor is taken down or
+  // hidden (utils/publicVisibility.js).
   const projects = await Project.find(filter)
-    .populate('vendorId', 'businessName')
+    .populate('vendorId', 'businessName isApproved isListingEnabled approvalStatus')
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);
