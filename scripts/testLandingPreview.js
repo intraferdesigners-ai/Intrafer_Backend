@@ -38,11 +38,11 @@ versionService.deleteVersionsFor = async () => {};
 
 // ── In-memory pages ──────────────────────────────────────────────────────
 const draft = {
-  _id: new mongoose.Types.ObjectId(), category: CATEGORY._id, stateSlug: 'delhi', citySlug: 'gaziabad',
+  _id: new mongoose.Types.ObjectId(), level: 'city', category: CATEGORY._id, stateSlug: 'delhi', citySlug: 'gaziabad',
   status: 'draft', seo: { indexing: 'index' }, vendorList: { sort: 'featured', limit: 12 }, heading: 'DRAFT',
 };
 const published = {
-  _id: new mongoose.Types.ObjectId(), category: CATEGORY._id, stateSlug: 'delhi', citySlug: 'noida',
+  _id: new mongoose.Types.ObjectId(), level: 'city', category: CATEGORY._id, stateSlug: 'delhi', citySlug: 'noida',
   status: 'published', seo: { indexing: 'index' }, vendorList: { sort: 'featured', limit: 12 }, heading: 'LIVE',
 };
 const PAGES = [draft, published];

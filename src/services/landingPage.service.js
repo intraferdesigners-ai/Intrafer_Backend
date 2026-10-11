@@ -66,9 +66,53 @@ async function buildVendorFilter(categoryId, stateSlug, citySlug) {
   return { filter: nameFilter(categoryId, stateSlug, citySlug), matchedPlace: null, matchedBy: 'name' };
 }
 
+// State hub scope (Phase 4C). Same tolerance as city matching: the state
+// slug resolves through resolveState() -> every Place in that state, and a
+// vendor counts when location.placeId or any serviceLocations[].placeId is
+// one of them — exactly the vendors GET /public/category-cities spreads
+// across that state's city cards, each counted once. Only a state that
+// doesn't resolve falls back to the vendor's free-text state names.
+async function buildStateVendorFilter(categoryId, stateSlug) {
+  const stateName = await resolveState(stateSlug);
+  if (stateName) {
+    const placeIds = (await Place.find({ state: stateName }).select('_id')).map((p) => p._id);
+    return {
+      filter: {
+        ...LISTED,
+        primaryCategory: categoryId,
+        $or: [
+          { 'location.placeId': { $in: placeIds } },
+          { 'serviceLocations.placeId': { $in: placeIds } },
+        ],
+      },
+      matchedState: stateName,
+      matchedBy: 'place',
+    };
+  }
+  const stateRe = slugRegex(stateSlug);
+  return {
+    filter: {
+      ...LISTED,
+      primaryCategory: categoryId,
+      $or: [{ 'location.state': stateRe }, { 'serviceLocations.state': stateRe }],
+    },
+    matchedState: null,
+    matchedBy: 'name',
+  };
+}
+
+// Category hub scope: every listed vendor in the category — the same
+// vendor query GET /public/states?category= builds the hub's state list from.
+function buildCategoryVendorFilter(categoryId) {
+  return { filter: { ...LISTED, primaryCategory: categoryId } };
+}
+
 // seo.indexing is the single source of truth for a landing page's
-// indexability: forced either way, or the shared vendor-count threshold.
-function computeIndexable(indexing, vendorCount) {
+// indexability. City pages: forced either way, or the shared vendor-count
+// threshold. Hubs (state/category) are always indexable unless set to
+// noindex — the threshold never applies to them ('auto' = 'index').
+function computeIndexable(level, indexing, vendorCount) {
+  if (level === 'category' || level === 'state') return indexing !== 'noindex';
   if (indexing === 'index') return true;
   if (indexing === 'noindex') return false;
   return meetsIndexThreshold(vendorCount);
@@ -110,6 +154,8 @@ function isSimilarSlug(a, b) {
 module.exports = {
   VENDOR_SORT,
   buildVendorFilter,
+  buildStateVendorFilter,
+  buildCategoryVendorFilter,
   placeFilter,
   nameFilter,
   computeIndexable,

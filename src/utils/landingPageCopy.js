@@ -1,7 +1,7 @@
 const { slugify } = require('./slug');
 
-// Copying one landing page's content onto a new city (duplicate and bulk
-// create, Phase 4A). Pure — exercised by scripts/testLandingBulk.js.
+// Copying one landing page's content onto a new location (duplicate and
+// bulk create, Phase 4A; state/category pages, Phase 4C). Pure — exercised by scripts/testLandingBulk.js.
 
 const MAX_LOCATION_LENGTH = 80; // LandingPage state/city maxlength
 
@@ -29,7 +29,7 @@ function copyContent(source) {
       localities: [...(sec.localities || [])],
       enabled: sec.enabled,
     })),
-    vendorList: { sort: s.vendorList?.sort, limit: s.vendorList?.limit },
+    vendorList: { enabled: s.vendorList?.enabled, sort: s.vendorList?.sort, limit: s.vendorList?.limit },
     seo: {
       metaTitle: seo.metaTitle, metaDescription: seo.metaDescription,
       ogImage: seo.ogImage, indexing: seo.indexing,
@@ -89,17 +89,20 @@ function fieldLabel(field) {
   return j !== undefined ? `section ${+i + 1} FAQ ${key} ${+j + 1}` : `section ${+i + 1} ${key}`;
 }
 
-// Warnings for a copy of `source` made for `target` ({ state, city }):
-// text that names the source's city or state as a whole word (it'll read
-// wrong for the new city), and one warning per localities section that
-// has entries (those are the source city's localities). A name the target
-// shares (same state, same city) isn't flagged.
+// Warnings for a copy of `source` made for `target` ({ state, city } —
+// plus { category, sourceCategory } names for a category page's copy):
+// text that names the source's city, state or category as a whole word
+// (it'll read wrong for the new page), and one warning per localities
+// section that has entries (those belong to the source's location). A name
+// the target shares (same state, same city) isn't flagged.
 // Returns [{ field, match?, message }].
 function findSourceMentions(source, target) {
   const s = typeof source?.toObject === 'function' ? source.toObject() : (source || {});
   const names = [];
   if (s.city && slugify(s.city) !== slugify(target.city || '')) names.push(s.city);
   if (s.state && slugify(s.state) !== slugify(target.state || '')) names.push(s.state);
+  const categoryChanged = Boolean(target.sourceCategory) && slugify(target.sourceCategory) !== slugify(target.category || '');
+  if (categoryChanged) names.push(target.sourceCategory);
   if (!names.length) return [];
 
   const warnings = [];
@@ -109,10 +112,18 @@ function findSourceMentions(source, target) {
       if (re.test(text)) warnings.push({ field, match: name, message: `The ${fieldLabel(field)} mentions “${name}”` });
     }
   }
-  if (slugify(s.city || '') !== slugify(target.city || '')) {
+  // The copy is for a different place: another city for a city page (as
+  // before Phase 4C), another state for a state page, another category
+  // for a category page.
+  let from;
+  let placeChanged;
+  if (s.city) [from, placeChanged] = [s.city, slugify(s.city) !== slugify(target.city || '')];
+  else if (s.state) [from, placeChanged] = [s.state, slugify(s.state) !== slugify(target.state || '')];
+  else [from, placeChanged] = [target.sourceCategory, categoryChanged];
+  if (placeChanged) {
     (s.sections || []).forEach((sec, i) => {
       if ((sec.localities || []).some(Boolean)) {
-        warnings.push({ field: `sections.${i}.localities`, message: `Localities were copied from ${s.city} — replace them (section ${i + 1})` });
+        warnings.push({ field: `sections.${i}.localities`, message: `Localities were copied from ${from} — replace them (section ${i + 1})` });
       }
     });
   }

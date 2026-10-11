@@ -16,7 +16,7 @@ const {
   copyContent, normaliseLocation, findSourceMentions, MAX_LOCATION_LENGTH,
 } = require('../utils/landingPageCopy');
 const {
-  VENDOR_SORT, buildVendorFilter, placeFilter, nameFilter,
+  VENDOR_SORT, buildVendorFilter, buildStateVendorFilter, buildCategoryVendorFilter, placeFilter, nameFilter,
   computeIndexable, resolvePlaceWithAliases, isSimilarSlug,
 } = require('../services/landingPage.service');
 
@@ -37,8 +37,32 @@ const pickEditable = (body = {}) => {
   return out;
 };
 
-const duplicateMessage = (page) =>
-  `A landing page for ${page.city || '(all cities)'}, ${page.state || '(all states)'} already exists in this category.`;
+// Phase 4C: a page is a category hub, a state hub or a city page. Docs
+// written before `level` was used are city pages.
+const LEVELS = ['category', 'state', 'city'];
+const levelOf = (page) => page?.level || 'city';
+const isHub = (level) => level === 'category' || level === 'state';
+
+// The vendor filter for a page of `level` — the city page's Place-or-name
+// match, or the hub scopes (services/landingPage.service.js).
+async function scopeFilter(level, categoryId, stateSlug, citySlug) {
+  if (level === 'category') return buildCategoryVendorFilter(categoryId);
+  if (level === 'state') return buildStateVendorFilter(categoryId, stateSlug);
+  return buildVendorFilter(categoryId, stateSlug, citySlug);
+}
+
+// The page's public path, trailing slash included.
+function publicPath(level, categorySlug, stateSlug, citySlug) {
+  if (level === 'category') return `/${categorySlug}/`;
+  if (level === 'state') return `/${categorySlug}/${stateSlug}/`;
+  return `/${categorySlug}/${stateSlug}/${citySlug}/`;
+}
+
+const duplicateMessage = (page) => {
+  if (page.level === 'category') return 'A category page already exists for this category.';
+  if (page.level === 'state') return `A landing page for ${page.state} already exists in this category.`;
+  return `A landing page for ${page.city || '(all cities)'}, ${page.state || '(all states)'} already exists in this category.`;
+};
 
 // Plain-English names for schema paths, keyed with array indexes
 // collapsed to `N` (see validationMessage).
@@ -161,8 +185,12 @@ async function unpublishPage(page, userId) {
 // ── Admin ────────────────────────────────────────────────────────────────
 
 const getLandingPages = catchAsync(async (req, res) => {
-  const { category, status, q } = req.query;
+  const { category, status, q, level } = req.query;
   const filter = {};
+  if (level) {
+    if (!LEVELS.includes(level)) return error(res, 'Invalid page type.', 400);
+    filter.level = level;
+  }
   if (category) {
     if (!mongoose.isValidObjectId(category)) return error(res, 'Invalid category.', 400);
     filter.category = category;
@@ -198,14 +226,24 @@ const getLandingPageById = catchAsync(async (req, res) => {
 
 const createLandingPage = catchAsync(async (req, res) => {
   const data = pickEditable(req.body);
-  if (!data.category || !data.state || !data.city) {
+  const level = data.level === undefined ? 'city' : data.level;
+  if (!LEVELS.includes(level)) return error(res, 'Choose a valid page type.', 400);
+  if (level === 'category' && !data.category) return error(res, 'category is required.', 400);
+  if (level === 'state' && (!data.category || !data.state)) return error(res, 'category and state are required.', 400);
+  if (level === 'city' && (!data.category || !data.state || !data.city)) {
     return error(res, 'category, state and city are required.', 400);
   }
   if (!mongoose.isValidObjectId(data.category) || !(await ServiceCategory.exists({ _id: data.category }))) {
     return error(res, 'Category not found.', 400);
   }
 
-  const page = new LandingPage({ ...data, createdBy: req.user._id, updatedBy: req.user._id });
+  // Hubs start without a "Top vendors" block unless the admin asked for one.
+  if (isHub(level)) {
+    const vendorList = data.vendorList && typeof data.vendorList === 'object' ? data.vendorList : {};
+    data.vendorList = { ...vendorList, enabled: vendorList.enabled === undefined ? false : vendorList.enabled };
+  }
+
+  const page = new LandingPage({ ...data, level, createdBy: req.user._id, updatedBy: req.user._id });
   const failed = await saveWithDuplicateCheck(res, page);
   if (failed) return failed;
   await recordSafely(page, { kind: 'create', adminId: req.user._id });
@@ -219,6 +257,11 @@ const updateLandingPage = catchAsync(async (req, res) => {
   if (!page) return error(res, 'Landing page not found.', 404);
 
   const data = pickEditable(req.body); // never includes restoredFrom
+  // The page type is fixed at creation; resending the same one is fine.
+  if (data.level !== undefined && data.level !== levelOf(page)) {
+    return error(res, "Page type can't be changed.", 400);
+  }
+  delete data.level;
   const previousStatus = page.status;
   // The editor's Unpublish sends exactly { status: 'draft' }.
   if (Object.keys(data).length === 1 && data.status === 'draft') {
@@ -287,13 +330,13 @@ const uploadLandingPageImage = (req, res) => {
 const createPreviewToken = catchAsync(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return error(res, 'Landing page not found.', 404);
   const page = await LandingPage.findById(req.params.id)
-    .select('category stateSlug citySlug')
+    .select('level category stateSlug citySlug')
     .populate('category', 'slug');
   if (!page) return error(res, 'Landing page not found.', 404);
   if (!page.category?.slug) return error(res, "This page's category no longer exists.", 409);
 
   const { token, expiresAt } = signPreviewToken(page._id);
-  const path = `/${page.category.slug}/${page.stateSlug}/${page.citySlug}/?preview=${encodeURIComponent(token)}`;
+  const path = `${publicPath(levelOf(page), page.category.slug, page.stateSlug, page.citySlug)}?preview=${encodeURIComponent(token)}`;
   return success(res, { token, expiresAt, path });
 });
 
@@ -328,17 +371,62 @@ async function findSimilarPages(candidates, stateSlug, citySlug) {
   return similar;
 }
 
+// Hub match-check (Phase 4C): the vendors the page's scope counts, and
+// existing pages of the same level — the same key ('same-slug', i.e. this
+// page already exists) or, for state pages, a near-identical state name.
+async function hubMatchCheck(res, level, serviceCategory, state, excludeId) {
+  const stateSlug = level === 'state' ? slugify(String(state || '')) : '';
+  if (level === 'state' && !stateSlug) return error(res, 'state must contain letters or digits.', 400);
+
+  const scope = await scopeFilter(level, serviceCategory._id, stateSlug, '');
+  const vendorCount = await Vendor.countDocuments(scope.filter);
+
+  const candidates = await LandingPage.find({
+    category: serviceCategory._id,
+    level,
+    ...(excludeId && mongoose.isValidObjectId(excludeId) ? { _id: { $ne: excludeId } } : {}),
+  }).select('state city stateSlug citySlug status level');
+
+  const similar = [];
+  for (const c of candidates) {
+    if (levelOf(c) !== level) continue;
+    let reason = null;
+    if (c.stateSlug === stateSlug) reason = 'same-slug';
+    else if (level === 'state' && isSimilarSlug(c.stateSlug, stateSlug)) reason = 'similar-name';
+    if (reason) {
+      similar.push({
+        _id: c._id, level, state: c.state, city: c.city, stateSlug: c.stateSlug, citySlug: c.citySlug, status: c.status, reason,
+      });
+    }
+  }
+
+  return success(res, {
+    level,
+    vendorCount,
+    ...(level === 'state' && { matchedState: scope.matchedState || null }),
+    similar,
+  });
+}
+
 // Editor hint + duplicate warning. Never blocks — only informs.
 // `category` is an ObjectId (or a slug); state/city are free text or slugs.
-// `excludeId` leaves the page being edited out of `similar`.
+// `excludeId` leaves the page being edited out of `similar`. `level`
+// (default 'city') picks the key: category pages ignore state and city,
+// state pages ignore city. The city response is unchanged.
 const matchCheck = catchAsync(async (req, res) => {
   const { category, state, city, excludeId } = req.query;
-  if (!category || !state || !city) return error(res, 'category, state and city are required.', 400);
+  const level = req.query.level || 'city';
+  if (!LEVELS.includes(level)) return error(res, 'Invalid page type.', 400);
+  if (!category) return error(res, 'category is required.', 400);
+  if (level === 'state' && !state) return error(res, 'category and state are required.', 400);
+  if (level === 'city' && (!state || !city)) return error(res, 'category, state and city are required.', 400);
 
   const serviceCategory = mongoose.isValidObjectId(category)
     ? await ServiceCategory.findById(category)
     : await ServiceCategory.findOne({ slug: category });
   if (!serviceCategory) return error(res, 'Category not found.', 404);
+
+  if (isHub(level)) return hubMatchCheck(res, level, serviceCategory, state, excludeId);
 
   const stateSlug = slugify(String(state));
   const citySlug = slugify(String(city));
@@ -353,6 +441,7 @@ const matchCheck = catchAsync(async (req, res) => {
   const candidates = await LandingPage.find({
     category: serviceCategory._id,
     stateSlug,
+    level: 'city',
     ...(excludeId && mongoose.isValidObjectId(excludeId) ? { _id: { $ne: excludeId } } : {}),
   }).select('state city stateSlug citySlug status level');
 
@@ -376,8 +465,8 @@ const MAX_BULK_ACTION_IDS = 100;
 const BULK_ACTIONS = ['publish', 'unpublish', 'delete'];
 const SIMILAR_CONCURRENCY = 5;
 
-// A new draft for (state, city) carrying `template`'s content, or blank
-// when there's no template.
+// A new draft for (state, city) carrying `template`'s content (including
+// its level), or a blank city page when there's no template.
 function buildDraft({ template, category, state, city, userId }) {
   return new LandingPage({
     ...(template ? copyContent(template) : {}),
@@ -422,31 +511,65 @@ function normaliseItem(raw) {
   return { ...out, stateSlug, citySlug };
 }
 
-// POST /admin/landing-pages/:id/duplicate { state, city } -> 201 { page, warnings }
+// "Category — City, State" / "Category — State" / "Category".
+function pageLabel(page, categoryName) {
+  const name = categoryName || 'Unknown category';
+  const level = levelOf(page);
+  if (level === 'category') return name;
+  if (level === 'state') return `${name} — ${page.state}`;
+  return `${name} — ${page.city}, ${page.state}`;
+}
+
+// POST /admin/landing-pages/:id/duplicate -> 201 { page, warnings }. The
+// body names the new location for the source's level: { state, city } for
+// a city page, { state } for a state page (same category), { category }
+// (another active category) for a category page.
 const duplicateLandingPage = catchAsync(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return error(res, 'Landing page not found.', 404);
   const source = await LandingPage.findById(req.params.id);
   if (!source) return error(res, 'Landing page not found.', 404);
+  const level = levelOf(source);
 
-  const state = normaliseLocation(req.body?.state);
-  const city = normaliseLocation(req.body?.city);
-  if (!state || !city) return error(res, 'state and city are required.', 400);
+  let category = source.category;
+  let state = '';
+  let city = '';
+  if (level === 'category') {
+    const target = req.body?.category;
+    if (!target) return error(res, 'category is required.', 400);
+    if (!mongoose.isValidObjectId(target) || !(await ServiceCategory.exists({ _id: target, isActive: true }))) {
+      return error(res, 'Category not found.', 400);
+    }
+    category = target;
+  } else {
+    state = normaliseLocation(req.body?.state);
+    city = normaliseLocation(req.body?.city);
+    if (level === 'state' && !state) return error(res, 'state is required.', 400);
+    if (level === 'city' && (!state || !city)) return error(res, 'state and city are required.', 400);
+  }
 
-  const page = buildDraft({ template: source, category: source.category, state, city, userId: req.user._id });
+  const page = buildDraft({ template: source, category, state, city, userId: req.user._id });
   const failed = await saveWithDuplicateCheck(res, page);
   if (failed) return failed;
   await recordSafely(page, { kind: 'duplicate', adminId: req.user._id });
 
-  const warnings = findSourceMentions(source, { state, city });
+  const sameCategory = String(category) === String(source.category);
+  const [sourceCategory, targetCategory] = await Promise.all([
+    ServiceCategory.findById(source.category).select('name'),
+    sameCategory ? null : ServiceCategory.findById(category).select('name'),
+  ]);
+  const sourceName = sourceCategory?.name;
+  const targetName = sameCategory ? sourceName : targetCategory?.name;
+  const warnings = findSourceMentions(source, {
+    state, city, ...(level === 'category' && { category: targetName, sourceCategory: sourceName }),
+  });
   // Audit: ids and "Category — City, State" labels only, never content.
   // Set only on success; a 4xx isn't audited at all.
-  const categoryDoc = await ServiceCategory.findById(source.category).select('name');
-  const label = (p) => `${categoryDoc?.name || 'Unknown category'} — ${p.city}, ${p.state}`;
+  const label = (p, name) => pageLabel(p, name);
   res.locals.auditDetails = {
     sourceId: String(source._id),
-    sourceLabel: label(source),
+    sourceLabel: label(source, sourceName),
     newId: String(page._id),
-    newLabel: label(page),
+    newLabel: label(page, targetName),
     warnings: warnings.length,
   };
 
@@ -471,6 +594,8 @@ const bulkCreateLandingPages = catchAsync(async (req, res) => {
     if (!mongoose.isValidObjectId(templateId)) return error(res, 'Template not found.', 404);
     template = await LandingPage.findById(templateId);
     if (!template) return error(res, 'Template not found.', 404);
+    // Bulk create makes city pages only.
+    if (levelOf(template) !== 'city') return error(res, 'Templates must be city pages.', 400);
   }
   if (categoryParam && (!mongoose.isValidObjectId(categoryParam) || !(await ServiceCategory.exists({ _id: categoryParam })))) {
     return error(res, 'Category not found.', 400);
@@ -503,7 +628,7 @@ const bulkCreateLandingPages = catchAsync(async (req, res) => {
   const live = results.filter((r) => r.status === 'ok');
   const stateSlugs = [...new Set(live.map((r) => r.stateSlug))];
   const existing = stateSlugs.length
-    ? await LandingPage.find({ category, stateSlug: { $in: stateSlugs } }).select('state city stateSlug citySlug status level')
+    ? await LandingPage.find({ category, level: 'city', stateSlug: { $in: stateSlugs } }).select('state city stateSlug citySlug status level')
     : [];
   await mapLimit(live, SIMILAR_CONCURRENCY, async (r) => {
     const inState = existing.filter((p) => p.stateSlug === r.stateSlug);
@@ -670,9 +795,18 @@ const PUBLIC_OMIT = '-createdBy -updatedBy -__v';
 // `indexable: false` and is no-store. Any other token — missing, expired,
 // tampered, another purpose, another page — gets exactly the normal
 // response, so it never reveals whether a draft exists.
+//
+// Phase 4C: the level comes from the params — category only = category
+// hub, + state = state hub, + city = city page (city without state is a
+// 400). The city response is unchanged; hubs answer
+// { page, vendors, vendorCount, indexable, level }, where vendors stays []
+// unless the page turned its "Top vendors" block on (vendorCount is always
+// there, for {{vendorCount}}).
 const getPublicLandingPage = catchAsync(async (req, res) => {
   const { category, state, city, preview } = req.query;
-  if (!category || !state || !city) return error(res, 'category, state and city are required.', 400);
+  if (!category) return error(res, 'category is required.', 400);
+  if (city && !state) return error(res, 'state is required when city is set.', 400);
+  if (!city) return getPublicHubPage(req, res, state ? 'state' : 'category');
 
   const serviceCategory = await resolveCategory(category);
   if (!serviceCategory) return error(res, 'Category not found.', 404);
@@ -681,7 +815,7 @@ const getPublicLandingPage = catchAsync(async (req, res) => {
   const citySlug = slugify(String(city));
   if (!stateSlug || !citySlug) return error(res, 'Invalid state or city.', 400);
 
-  const key = { category: serviceCategory._id, stateSlug, citySlug };
+  const key = { category: serviceCategory._id, stateSlug, citySlug, level: 'city' };
   const findPage = (filter) => LandingPage.findOne(filter)
     .select(PUBLIC_OMIT)
     .populate('category', 'name slug schemaOrgType');
@@ -710,7 +844,7 @@ const getPublicLandingPage = catchAsync(async (req, res) => {
     page: page || null,
     vendors: await attachCardImages(vendors),
     vendorCount,
-    indexable: isPreview ? false : computeIndexable(indexing, vendorCount),
+    indexable: isPreview ? false : computeIndexable('city', indexing, vendorCount),
   };
   if (isPreview) {
     body.preview = true;
@@ -719,25 +853,82 @@ const getPublicLandingPage = catchAsync(async (req, res) => {
   return success(res, body);
 });
 
-// Published pages for the Phase 2 sitemap. Pages whose category is gone
-// or inactive are skipped — their URLs 404 anyway.
+// The category/state half of getPublicLandingPage — same lookup and
+// preview rules, keyed with '' for the missing location parts.
+async function getPublicHubPage(req, res, level) {
+  const { category, state, preview } = req.query;
+  const serviceCategory = await resolveCategory(category);
+  if (!serviceCategory) return error(res, 'Category not found.', 404);
+
+  const stateSlug = level === 'state' ? slugify(String(state)) : '';
+  if (level === 'state' && !stateSlug) return error(res, 'Invalid state.', 400);
+
+  const key = { category: serviceCategory._id, stateSlug, citySlug: '', level };
+  const findPage = (filter) => LandingPage.findOne(filter)
+    .select(PUBLIC_OMIT)
+    .populate('category', 'name slug schemaOrgType');
+
+  const previewPageId = verifyPreviewToken(preview);
+  let page = null;
+  let isPreview = false;
+  if (previewPageId && mongoose.isValidObjectId(previewPageId)) {
+    page = await findPage({ ...key, _id: previewPageId });
+    isPreview = Boolean(page);
+  }
+  if (!isPreview) page = await findPage({ ...key, status: 'published' });
+
+  const { filter } = await scopeFilter(level, serviceCategory._id, stateSlug, '');
+  const vendorCount = await Vendor.countDocuments(filter);
+  let vendors = [];
+  if (page?.vendorList?.enabled === true) {
+    const found = await Vendor.find(filter)
+      .sort(VENDOR_SORT[page.vendorList.sort] || VENDOR_SORT.featured)
+      .limit(page.vendorList.limit || 12)
+      .populate('userId', 'name');
+    vendors = await attachCardImages(found);
+  }
+
+  const body = {
+    page: page || null,
+    vendors,
+    vendorCount,
+    indexable: isPreview ? false : computeIndexable(level, page?.seo?.indexing || 'auto', vendorCount),
+    level,
+  };
+  if (isPreview) {
+    body.preview = true;
+    res.set('Cache-Control', 'no-store');
+  }
+  return success(res, body);
+}
+
+// Published pages for the sitemap, every level (Phase 4C adds `level`;
+// hubs have '' for their missing slugs). Pages whose category is gone or
+// inactive are skipped — their URLs 404 anyway. Only city pages need a
+// vendor count: hubs are indexable unless set to noindex.
 const getLandingPagesSitemap = catchAsync(async (req, res) => {
-  const pages = await LandingPage.find({ status: 'published', level: 'city' })
-    .select('category stateSlug citySlug updatedAt seo.indexing')
+  const pages = await LandingPage.find({ status: 'published' })
+    .select('level category stateSlug citySlug updatedAt seo.indexing')
     .populate('category', 'slug isActive')
     .sort({ updatedAt: -1 });
 
   const entries = [];
   for (const p of pages) {
     if (!p.category || !p.category.isActive) continue;
-    const { filter } = await buildVendorFilter(p.category._id, p.stateSlug, p.citySlug);
-    const vendorCount = await Vendor.countDocuments(filter);
+    const level = levelOf(p);
+    const indexing = p.seo?.indexing || 'auto';
+    let vendorCount = 0;
+    if (level === 'city') {
+      const { filter } = await buildVendorFilter(p.category._id, p.stateSlug, p.citySlug);
+      vendorCount = await Vendor.countDocuments(filter);
+    }
     entries.push({
+      level,
       categorySlug: p.category.slug,
-      stateSlug: p.stateSlug,
-      citySlug: p.citySlug,
+      stateSlug: p.stateSlug || '',
+      citySlug: p.citySlug || '',
       updatedAt: p.updatedAt,
-      indexable: computeIndexable(p.seo?.indexing || 'auto', vendorCount),
+      indexable: computeIndexable(level, indexing, vendorCount),
     });
   }
 

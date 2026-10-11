@@ -1,16 +1,19 @@
 const mongoose = require('mongoose');
 const { slugify } = require('../utils/slug');
 
-// Admin-authored enrichment for one /[category]/[state]/[city]/ page (the
-// admin-managed landing pages feature, Phase 1). No record — or a draft
-// one — means the page renders exactly as the automatic page does today.
+// Admin-authored enrichment for one public page (the admin-managed landing
+// pages feature): a city page /[category]/[state]/[city]/, or (Phase 4C) a
+// state hub /[category]/[state]/ or category hub /[category]/. No record —
+// or a draft one — means the page renders exactly as the automatic page
+// does today.
 //
 // state/city are FREE TEXT by client decision: a record must work even
 // when the city doesn't exist in the Place taxonomy (e.g. "Gaziabad"), so
 // the record is keyed by its own derived slugs, never by a Place._id.
 //
-// `level` exists so state- and category-level pages can reuse this model
-// later; only 'city' is used in v1.
+// `level` picks which of the three: 'category' pages have no state/city,
+// 'state' pages no city (both stored as '' so the unique key below still
+// works). Fixed at creation — the controller refuses to change it.
 //
 // Every Markdown/text field is stored as plain Markdown with ALL HTML tags
 // stripped on save — Phase 2 renders it with HTML disabled, this is the
@@ -111,6 +114,10 @@ const landingPageSchema = new mongoose.Schema(
       validate: { validator: (v) => v.length <= MAX_SECTIONS, message: `A page can have at most ${MAX_SECTIONS} sections.` },
     },
     vendorList: {
+      // Hubs only: whether the page shows a "Top vendors" block (hubs are
+      // created with false). City pages always show their vendors and
+      // ignore this.
+      enabled: { type: Boolean, default: true },
       sort: { type: String, enum: ['featured', 'rating', 'newest'], default: 'featured' },
       limit: { type: Number, min: 1, max: 50, default: 12 },
     },
@@ -132,6 +139,9 @@ landingPageSchema.index({ status: 1 });
 // pre('validate'), not pre('save'), so maxlength/required run against the
 // stripped values and the derived slugs.
 landingPageSchema.pre('validate', function () {
+  // A hub has no city (and a category page no state) whatever was sent.
+  if (this.level === 'category') this.state = '';
+  if (this.level !== 'city') this.city = '';
   this.state = stripHtml(this.state);
   this.city = stripHtml(this.city);
   for (const key of ['headline', 'subheadline', 'ctaLabel']) {
