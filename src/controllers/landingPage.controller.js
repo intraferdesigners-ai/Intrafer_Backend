@@ -554,11 +554,12 @@ const duplicateLandingPage = catchAsync(async (req, res) => {
 
   const sameCategory = String(category) === String(source.category);
   const [sourceCategory, targetCategory] = await Promise.all([
-    ServiceCategory.findById(source.category).select('name'),
-    sameCategory ? null : ServiceCategory.findById(category).select('name'),
+    ServiceCategory.findById(source.category).select('name slug'),
+    sameCategory ? null : ServiceCategory.findById(category).select('name slug'),
   ]);
   const sourceName = sourceCategory?.name;
-  const targetName = sameCategory ? sourceName : targetCategory?.name;
+  const targetCategoryDoc = sameCategory ? sourceCategory : targetCategory;
+  const targetName = targetCategoryDoc?.name;
   const warnings = findSourceMentions(source, {
     state, city, ...(level === 'category' && { category: targetName, sourceCategory: sourceName }),
   });
@@ -570,6 +571,8 @@ const duplicateLandingPage = catchAsync(async (req, res) => {
     sourceLabel: label(source, sourceName),
     newId: String(page._id),
     newLabel: label(page, targetName),
+    // The new page's public URL, same shape as the preview link's path.
+    ...(targetCategoryDoc?.slug && { newPath: publicPath(level, targetCategoryDoc.slug, page.stateSlug, page.citySlug) }),
     warnings: warnings.length,
   };
 

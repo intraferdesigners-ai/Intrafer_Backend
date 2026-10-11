@@ -77,8 +77,11 @@ LandingPage.prototype.save = async function save(options = {}) {
 for (const name of ['create', 'insertMany', 'updateOne', 'updateMany', 'findByIdAndUpdate', 'findOneAndUpdate', 'bulkWrite', 'replaceOne']) {
   LandingPage[name] = () => { throw new Error(`LandingPage.${name} must not be called`); };
 }
-const CATEGORY_NAMES = { [String(CAT)]: 'Interior Designers' };
-ServiceCategory.findById = (id) => query(CATEGORY_NAMES[String(id)] ? { _id: id, name: CATEGORY_NAMES[String(id)] } : null);
+const CATEGORIES = {
+  [String(CAT)]: { name: 'Interior Designers', slug: 'interior-designers' },
+  [String(OTHER_CAT)]: { name: 'Architects', slug: 'architects' },
+};
+ServiceCategory.findById = (id) => query(CATEGORIES[String(id)] ? { _id: id, ...CATEGORIES[String(id)] } : null);
 ServiceCategory.exists = async (filter) => ([CAT, OTHER_CAT].some((c) => eq(c, filter._id)) ? { _id: filter._id } : null);
 const VENDORS = { pune: 7, nashik: 2 };
 Vendor.countDocuments = async (filter) => VENDORS[filter.citySlug] || 0;
@@ -203,6 +206,7 @@ async function check(name, fn) {
       sourceLabel: 'Interior Designers — Pune, Maharashtra',
       newId: String(ok.body.data.page._id),
       newLabel: 'Interior Designers — Gautam Buddha Nagar, Uttar Pradesh',
+      newPath: '/interior-designers/uttar-pradesh/gautam-buddha-nagar/',
       warnings: ok.body.data.warnings.length,
     });
     assert.ok(ok.locals.auditDetails.warnings > 0);
@@ -211,6 +215,22 @@ async function check(name, fn) {
     const missing = await call(duplicateLandingPage, { params: { id: String(new mongoose.Types.ObjectId()) }, body: { state: 'A', city: 'B' } });
     assert.deepStrictEqual([conflict.status, blank.status, missing.status], [409, 400, 404]);
     for (const r of [conflict, blank, missing]) assert.strictEqual(r.locals.auditDetails, undefined);
+  });
+
+  await check('duplicate audit newPath for state- and category-level sources', async () => {
+    const statePage = await seed({ level: 'state', state: 'Maharashtra', heading: 'Across Maharashtra' });
+    const st = await call(duplicateLandingPage, { params: { id: String(statePage._id) }, body: { state: 'Tamil Nadu' } });
+    assert.strictEqual(st.status, 201, JSON.stringify(st.body));
+    assert.strictEqual(st.locals.auditDetails.newPath, '/interior-designers/tamil-nadu/');
+    assert.strictEqual(st.locals.auditDetails.newLabel, 'Interior Designers — Tamil Nadu');
+
+    const categoryPage = await seed({ level: 'category' });
+    const cat = await call(duplicateLandingPage, { params: { id: String(categoryPage._id) }, body: { category: String(OTHER_CAT) } });
+    assert.strictEqual(cat.status, 201, JSON.stringify(cat.body));
+    assert.deepStrictEqual(
+      [cat.locals.auditDetails.sourceLabel, cat.locals.auditDetails.newLabel, cat.locals.auditDetails.newPath],
+      ['Interior Designers', 'Architects', '/architects/'],
+    );
   });
 
   await check('copyContent never carries _id, slugs, status, publishedAt, createdBy/updatedBy or timestamps', () => {
