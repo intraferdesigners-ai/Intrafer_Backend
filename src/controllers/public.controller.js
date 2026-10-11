@@ -8,6 +8,7 @@ const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
 const { resolveCategory, resolveState, resolvePlaceInState } = require('../utils/resolveTaxonomy');
 const { meetsIndexThreshold } = require('../utils/indexThreshold');
+const { VISIBLE_VENDOR, PUBLIC_PROJECT, publicProjectFilter, visibleVendorPopulate } = require('../utils/publicVisibility');
 
 const SORT_MAP = {
   rating:  { rating: -1 },
@@ -215,10 +216,11 @@ const getVendorsByIds = catchAsync(async (req, res) => {
 });
 
 const getVendorProjects = catchAsync(async (req, res) => {
+  // A hidden vendor's projects: the same empty list a nonexistent vendor gets.
+  if (!(await Vendor.exists({ _id: req.params.id, ...VISIBLE_VENDOR }))) return success(res, { projects: [] });
   const projects = await Project.find({
     vendorId: req.params.id,
-    isPublished: true,
-    moderationStatus: 'approved',
+    ...PUBLIC_PROJECT,
   }).sort({ createdAt: -1 });
 
   return success(res, { projects });
@@ -227,11 +229,12 @@ const getVendorProjects = catchAsync(async (req, res) => {
 const getProjectById = catchAsync(async (req, res) => {
   const project = await Project.findOne({
     _id: req.params.id,
-    isPublished: true,
-    moderationStatus: 'approved',
-  }).populate('vendorId', 'businessName location rating reviewCount profilePhoto isApproved');
+    ...PUBLIC_PROJECT,
+  }).populate(visibleVendorPopulate('businessName location rating reviewCount profilePhoto isApproved'));
 
-  if (!project) return error(res, 'Project not found.', 404);
+  // vendorId populates to null when the vendor is hidden or deleted — the
+  // project is then exactly as missing as an unpublished one.
+  if (!project || !project.vendorId) return error(res, 'Project not found.', 404);
   return success(res, { project });
 });
 
@@ -258,7 +261,7 @@ const getSimilarVendors = catchAsync(async (req, res) => {
 const getGallery = catchAsync(async (req, res) => {
   const { room, style, page, limit } = req.query;
 
-  const filter = { isPublished: true, moderationStatus: 'approved' };
+  const filter = await publicProjectFilter();
   if (room) filter.projectType = { $regex: new RegExp(room, 'i') };
   if (style) filter.style = { $regex: new RegExp(style, 'i') };
 
@@ -301,7 +304,7 @@ const getGallery = catchAsync(async (req, res) => {
 const getStats = catchAsync(async (req, res) => {
   const [vendorCount, projectCount, enquiryCount, ratingAgg, featuredCount] = await Promise.all([
     Vendor.countDocuments({ isApproved: true, isListingEnabled: true }),
-    Project.countDocuments({ isPublished: true, moderationStatus: 'approved' }),
+    publicProjectFilter().then((filter) => Project.countDocuments(filter)),
     Lead.countDocuments(),
     Vendor.aggregate([
       { $match: { isApproved: true, isListingEnabled: true } },
@@ -316,7 +319,8 @@ const getStats = catchAsync(async (req, res) => {
 });
 
 const getFeaturedProjects = catchAsync(async (req, res) => {
-  const featured = await Project.find({ isFeatured: true, isPublished: true, moderationStatus: 'approved' })
+  const visible = await publicProjectFilter();
+  const featured = await Project.find({ ...visible, isFeatured: true })
     .populate('vendorId', 'businessName')
     .sort({ createdAt: -1 })
     .limit(8);
@@ -325,9 +329,8 @@ const getFeaturedProjects = catchAsync(async (req, res) => {
   if (projects.length < 4) {
     const excludeIds = projects.map((p) => p._id);
     const fillers = await Project.find({
+      ...visible,
       _id: { $nin: excludeIds },
-      isPublished: true,
-      moderationStatus: 'approved',
     })
       .populate('vendorId', 'businessName')
       .sort({ createdAt: -1 })
@@ -339,14 +342,15 @@ const getFeaturedProjects = catchAsync(async (req, res) => {
 });
 
 const getRelatedProjects = catchAsync(async (req, res) => {
-  const current = await Project.findById(req.params.id);
+  // Related projects of a hidden project 404 like the project itself does.
+  const visible = await publicProjectFilter();
+  const current = await Project.findOne({ ...visible, _id: req.params.id });
   if (!current) return error(res, 'Project not found.', 404);
 
   const sameType = await Project.find({
+    ...visible,
     _id: { $ne: current._id },
     projectType: current.projectType,
-    isPublished: true,
-    moderationStatus: 'approved',
   })
     .populate('vendorId', 'businessName')
     .sort({ createdAt: -1 })
@@ -356,9 +360,8 @@ const getRelatedProjects = catchAsync(async (req, res) => {
   if (projects.length < 4) {
     const excludeIds = [current._id, ...projects.map((p) => p._id)];
     const fillers = await Project.find({
+      ...visible,
       _id: { $nin: excludeIds },
-      isPublished: true,
-      moderationStatus: 'approved',
     })
       .populate('vendorId', 'businessName')
       .sort({ createdAt: -1 })
