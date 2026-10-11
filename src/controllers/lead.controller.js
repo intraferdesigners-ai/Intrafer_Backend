@@ -6,6 +6,7 @@ const Review = require('../models/Review.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const generateEnquiryId = require('../utils/generateEnquiryId');
+const { clientUrl } = require('../utils/siteUrl');
 const leadService = require('../services/lead.service');
 const notifService = require('../services/notification.service');
 const emailService = require('../services/email.service');
@@ -152,7 +153,7 @@ const updateLeadStatus = catchAsync(async (req, res) => {
     await Vendor.findByIdAndUpdate(vendor._id, { $inc: { wonLeads: 1 } });
 
     if (reviewRawToken && lead.contactEmail) {
-      const reviewUrl = `${process.env.CLIENT_URL}/review/${reviewRawToken}`;
+      const reviewUrl = `${clientUrl()}/review/${reviewRawToken}`;
       emailService.sendReviewRequestEmail({
         to: lead.contactEmail,
         name: lead.contactName,

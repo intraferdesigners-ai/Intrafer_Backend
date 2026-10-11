@@ -10,6 +10,7 @@ const otpService = require('../services/otp.service');
 const emailService = require('../services/email.service');
 const notifService = require('../services/notification.service');
 const { isBot } = require('../utils/honeypot');
+const { clientUrl } = require('../utils/siteUrl');
 
 // Google Identity Services ID-token flow — the client posts a signed
 // credential it got directly from Google, and this verifies it server-side
@@ -465,7 +466,7 @@ const forgotPassword = catchAsync(async (req, res) => {
     user.passwordResetExpires = new Date(Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    const resetUrl = `${process.env.CLIENT_URL}/auth/reset-password?token=${rawToken}`;
+    const resetUrl = `${clientUrl()}/auth/reset-password?token=${rawToken}`;
     emailService.sendPasswordResetEmail({ to: user.email, name: user.name, resetUrl }).catch((err) =>
       console.error('[ForgotPassword] Email send failed:', err.message)
     );

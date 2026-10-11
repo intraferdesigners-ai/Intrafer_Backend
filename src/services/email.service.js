@@ -1,6 +1,7 @@
 const transporter = require('../config/mailer');
 const EmailTemplate = require('../models/EmailTemplate.model');
 const renderTemplate = require('../utils/renderTemplate');
+const { clientUrl } = require('../utils/siteUrl');
 
 // Looks up the active EmailTemplate for `key` and renders it against
 // `variables`. Falls back to the given hardcoded subject/html untouched if no
@@ -59,7 +60,7 @@ const sendLeadAssignedEmail = async ({
   contactName, contactPhone, contactEmail, requirements, isConsultation, preferredDate,
 }) => {
   const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
-  const dashboardUrl = `${process.env.CLIENT_URL}/vendor/dashboard/leads/${leadId}`;
+  const dashboardUrl = `${clientUrl()}/vendor/dashboard/leads/${leadId}`;
 
   const row = (label, value) => `
           <tr>
@@ -163,7 +164,7 @@ const sendSubscriptionConfirmEmail = async ({ to, vendorName, planName, endDate 
 
 const sendSubscriptionExpiringEmail = async ({ to, vendorName, planName, formattedDate }) => {
   const from = `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`;
-  const dashboardUrl = `${process.env.CLIENT_URL}/vendor/dashboard/subscription`;
+  const dashboardUrl = `${clientUrl()}/vendor/dashboard/subscription`;
 
   const fallbackSubject = 'Your Intrafer subscription is expiring soon';
   const fallbackHtml = `
@@ -200,7 +201,7 @@ const sendVendorWelcomeEmail = async ({ to, name, businessName }) => {
         <h3 style="color:#222;">Welcome, ${name}!</h3>
         <p style="font-size:15px;color:#333;">Your designer account for <strong>${businessName}</strong> has been created.</p>
         <p style="font-size:15px;color:#555;">Next, complete your business profile and subscribe to a plan to start receiving leads from homeowners.</p>
-        <p style="font-size:15px;color:#555;"><a href="https://intrafer.in/vendor/dashboard" style="color:#B5541E;">Go to your dashboard →</a></p>
+        <p style="font-size:15px;color:#555;"><a href="${clientUrl()}/vendor/dashboard" style="color:#B5541E;">Go to your dashboard →</a></p>
         <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
         <p style="font-size:12px;color:#aaa;">Intrafer — India's interior designer marketplace.</p>
       </div>
@@ -220,7 +221,7 @@ const sendOnboardingNudgeEmail = async ({ to, name, businessName }) => {
         <h3 style="color:#222;">You're a couple of steps from going live</h3>
         <p style="font-size:15px;color:#333;">Hi ${name},</p>
         <p style="font-size:15px;color:#555;"><strong>${businessName}</strong>'s business profile is complete, but your listing isn't active yet — subscribe to a plan to start receiving leads from homeowners.</p>
-        <p style="font-size:15px;color:#555;"><a href="https://intrafer.in/vendor/dashboard/subscription" style="color:#B5541E;">View plans →</a></p>
+        <p style="font-size:15px;color:#555;"><a href="${clientUrl()}/vendor/dashboard/subscription" style="color:#B5541E;">View plans →</a></p>
         <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
         <p style="font-size:12px;color:#aaa;">Intrafer — India's interior designer marketplace.</p>
       </div>
@@ -243,7 +244,7 @@ const sendVendorApprovedEmail = async ({ to, name, businessName }) => {
         <h3 style="color:#222;">Good news — your listing is back live.</h3>
         <p style="font-size:15px;color:#333;">Hi ${name},</p>
         <p style="font-size:15px;color:#555;">Your design studio <strong>${businessName}</strong> has been reinstated and your listing is live again on Intrafer.</p>
-        <p style="font-size:15px;color:#555;">To keep receiving leads, make sure you have an active plan at <a href="https://intrafer.in/vendor/dashboard/subscription" style="color:#B5541E;">Subscription Plans</a></p>
+        <p style="font-size:15px;color:#555;">To keep receiving leads, make sure you have an active plan at <a href="${clientUrl()}/vendor/dashboard/subscription" style="color:#B5541E;">Subscription Plans</a></p>
         <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
         <p style="font-size:12px;color:#aaa;">Intrafer — India's interior designer marketplace.</p>
       </div>
