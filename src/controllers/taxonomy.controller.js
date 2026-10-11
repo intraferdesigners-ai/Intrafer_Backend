@@ -4,6 +4,7 @@ const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 
 const { escapeRegex } = require('../utils/regex');
+const cache = require('../utils/revalidate');
 
 // ── Cities ──────────────────────────────────────────────────────────────
 
@@ -26,6 +27,7 @@ const createCity = catchAsync(async (req, res) => {
   if (existing) return error(res, 'A city with this name already exists.', 400);
 
   const city = await City.create({ name: normalizedName });
+  cache.purgeTaxonomy();
   return success(res, { city }, 'City created.', 201);
 });
 
@@ -39,12 +41,14 @@ const updateCity = catchAsync(async (req, res) => {
   const city = await City.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
   if (!city) return error(res, 'City not found.', 404);
 
+  cache.purgeTaxonomy();
   return success(res, { city }, 'City updated.');
 });
 
 const deleteCity = catchAsync(async (req, res) => {
   const city = await City.findByIdAndDelete(req.params.id);
   if (!city) return error(res, 'City not found.', 404);
+  cache.purgeTaxonomy();
   return success(res, {}, 'City deleted.');
 });
 
@@ -69,6 +73,7 @@ const createCategory = catchAsync(async (req, res) => {
   if (existing) return error(res, 'A category with this name already exists.', 400);
 
   const category = await Category.create({ name: normalizedName });
+  cache.purgeTaxonomy();
   return success(res, { category }, 'Category created.', 201);
 });
 
@@ -82,12 +87,14 @@ const updateCategory = catchAsync(async (req, res) => {
   const category = await Category.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
   if (!category) return error(res, 'Category not found.', 404);
 
+  cache.purgeTaxonomy();
   return success(res, { category }, 'Category updated.');
 });
 
 const deleteCategory = catchAsync(async (req, res) => {
   const category = await Category.findByIdAndDelete(req.params.id);
   if (!category) return error(res, 'Category not found.', 404);
+  cache.purgeTaxonomy();
   return success(res, {}, 'Category deleted.');
 });
 

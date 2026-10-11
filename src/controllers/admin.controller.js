@@ -11,6 +11,7 @@ const paginate = require('../utils/paginate');
 const { sendVendorApprovedEmail, sendVendorRejectedEmail } = require('../services/email.service');
 const notifService = require('../services/notification.service');
 const { PERMISSION_KEYS } = require('../constants/permissions');
+const cache = require('../utils/revalidate');
 
 const SETTINGS_DEFAULTS = {
   site_name: 'Intrafer',
@@ -75,6 +76,7 @@ const approveVendor = catchAsync(async (req, res) => {
   // around as a small "previously rejected: ..." historical note in the UI,
   // since it costs nothing and can be useful context later.
   await vendor.save();
+  cache.purgeVendor(vendor._id); // takedown/reinstate: profile, lists, every project page
 
   if (vendor.userId?.email) {
     if (approve) {
@@ -103,6 +105,7 @@ const toggleFeatured = catchAsync(async (req, res) => {
   if (!vendor) return error(res, 'Vendor not found.', 404);
   vendor.isFeatured = !vendor.isFeatured;
   await vendor.save();
+  cache.purgeVendor(vendor._id);
   return success(res, { isFeatured: vendor.isFeatured },
     vendor.isFeatured ? 'Vendor featured.' : 'Feature removed.');
 });
@@ -286,6 +289,7 @@ const updateSettings = catchAsync(async (req, res) => {
   );
   await Promise.all(ops);
 
+  cache.purgeHomepage();
   return success(res, {}, 'Settings saved successfully.');
 });
 
@@ -540,6 +544,7 @@ const moderateProject = catchAsync(async (req, res) => {
 
   const project = await Project.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
   if (!project) return error(res, 'Project not found.', 404);
+  cache.purgeProject(project._id, project.vendorId);
 
   const vendor = await Vendor.findById(project.vendorId);
   if (vendor) {
@@ -605,6 +610,7 @@ const toggleProjectFeatured = catchAsync(async (req, res) => {
   if (!project) return error(res, 'Project not found.', 404);
   project.isFeatured = !project.isFeatured;
   await project.save();
+  cache.purgeProject(project._id, project.vendorId);
   return success(res, { isFeatured: project.isFeatured },
     project.isFeatured ? 'Project featured.' : 'Feature removed.');
 });

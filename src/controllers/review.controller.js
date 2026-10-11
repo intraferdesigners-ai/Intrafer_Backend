@@ -4,6 +4,7 @@ const Lead   = require('../models/Lead.model');
 const Vendor = require('../models/Vendor.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
+const cache = require('../utils/revalidate');
 
 // Longer than auth.controller.js's password-reset window (30 minutes) on
 // purpose: an enquirer won't necessarily open a "leave a review" email right
@@ -90,6 +91,7 @@ exports.submitReviewViaToken = catchAsync(async (req, res) => {
     });
   }
 
+  cache.purgeReview(lead.vendorId); // new review + recalculated rating
   return success(res, { review }, 'Review submitted. Thank you!', 201);
 });
 

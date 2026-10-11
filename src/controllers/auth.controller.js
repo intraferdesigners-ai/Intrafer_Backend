@@ -10,6 +10,7 @@ const otpService = require('../services/otp.service');
 const emailService = require('../services/email.service');
 const notifService = require('../services/notification.service');
 const { isBot } = require('../utils/honeypot');
+const cache = require('../utils/revalidate');
 const { clientUrl } = require('../utils/siteUrl');
 
 // Google Identity Services ID-token flow — the client posts a signed
@@ -389,6 +390,14 @@ const updateProfile = catchAsync(async (req, res) => {
     updates,
     { new: true, runValidators: true }
   ).select('-passwordHash -refreshToken');
+
+  // A vendor's public profile shows its user's name/phone as fallbacks.
+  if (user.role === 'vendor' && (updates.name || updates.phone)) {
+    Promise.resolve()
+      .then(() => Vendor.findOne({ userId: user._id }).select('_id'))
+      .then((v) => v && cache.purgeVendor(v._id))
+      .catch((err) => console.error(`[revalidate] vendor lookup failed: ${err.message}`));
+  }
 
   return success(res, {
     user: {

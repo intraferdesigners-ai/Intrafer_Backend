@@ -2,24 +2,33 @@ const cron = require('node-cron');
 const Subscription = require('../models/Subscription.model');
 const Vendor = require('../models/Vendor.model');
 const notifService = require('../services/notification.service');
+const cache = require('../utils/revalidate');
+
+// Expires every active subscription past its end date and disables that
+// vendor's listing (then purges the vendor from the frontend cache).
+// Exported so it can be tested without the cron schedule.
+async function expireSubscriptions() {
+  const expired = await Subscription.find({
+    status: 'active',
+    endDate: { $lt: new Date() },
+  });
+
+  for (const sub of expired) {
+    sub.status = 'expired';
+    await sub.save();
+    await Vendor.findByIdAndUpdate(sub.vendorId, { isListingEnabled: false });
+    cache.purgeVendor(sub.vendorId);
+  }
+  return expired.length;
+}
 
 const startJobs = () => {
   cron.schedule(
     '0 0 * * *',
     async () => {
       try {
-        const expired = await Subscription.find({
-          status: 'active',
-          endDate: { $lt: new Date() },
-        });
-
-        for (const sub of expired) {
-          sub.status = 'expired';
-          await sub.save();
-          await Vendor.findByIdAndUpdate(sub.vendorId, { isListingEnabled: false });
-        }
-
-        console.log(`[CRON] Expired ${expired.length} subscriptions`);
+        const count = await expireSubscriptions();
+        console.log(`[CRON] Expired ${count} subscriptions`);
       } catch (err) {
         console.error(`[CRON] Expiry job error: ${err.message}`);
       }
@@ -60,4 +69,4 @@ const startJobs = () => {
   console.log('[CRON] Subscription jobs scheduled');
 };
 
-module.exports = { startJobs };
+module.exports = { startJobs, expireSubscriptions };

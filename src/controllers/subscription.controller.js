@@ -8,6 +8,7 @@ const { success, error } = require('../utils/apiResponse');
 const razorpayService = require('../services/razorpay.service');
 const notifService = require('../services/notification.service');
 const { validateCoupon } = require('./coupon.controller');
+const cache = require('../utils/revalidate');
 
 const formatINR = (amountInPaisa) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amountInPaisa / 100);
@@ -278,6 +279,7 @@ const activateFromPayment = async ({ orderId, paymentId }) => {
     { isListingEnabled: true, subscriptionId: sub._id },
     { new: true }
   );
+  cache.purgeVendor(sub.vendorId); // listing enabled
 
   const vendorUser = await User.findById(vendor.userId).select('email');
   notifService.dispatch('PAYMENT_SUCCESS', {

@@ -4,6 +4,7 @@ const Lead = require('../models/Lead.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 const { getFileUrl } = require('../middleware/upload');
+const cache = require('../utils/revalidate');
 
 const getProfile = catchAsync(async (req, res) => {
   const vendor = await Vendor.findOne({ userId: req.user._id }).populate('userId', 'name email phone');
@@ -40,6 +41,7 @@ const updateProfile = catchAsync(async (req, res) => {
   ).populate('userId', 'name email phone');
 
   if (!vendor) return error(res, 'Vendor profile not found.', 404);
+  cache.purgeVendor(vendor._id); // not awaited: fire-and-forget after the write
   return success(res, { vendor });
 });
 
@@ -78,6 +80,7 @@ const createProject = catchAsync(async (req, res) => {
     ...rest,
   });
 
+  cache.purgeProject(project._id, vendor._id);
   return success(res, { project }, 'Project created.', 201);
 });
 
@@ -137,6 +140,7 @@ const updateProject = catchAsync(async (req, res) => {
   );
 
   if (!project) return error(res, 'Project not found.', 404);
+  cache.purgeProject(project._id, vendor._id);
   return success(res, { project });
 });
 
@@ -147,6 +151,7 @@ const deleteProject = catchAsync(async (req, res) => {
   const project = await Project.findOneAndDelete({ _id: req.params.id, vendorId: vendor._id });
   if (!project) return error(res, 'Project not found.', 404);
 
+  cache.purgeProject(project._id, vendor._id);
   return success(res, {}, 'Project deleted.');
 });
 
@@ -163,6 +168,7 @@ const reorderProjects = catchAsync(async (req, res) => {
   );
   await Promise.all(updates);
 
+  cache.purgeVendorPage(vendor._id);
   return success(res, {}, 'Projects reordered.');
 });
 
@@ -260,6 +266,7 @@ const updateAvailability = catchAsync(async (req, res) => {
   );
 
   if (!vendor) return error(res, 'Vendor profile not found.', 404);
+  cache.purgeVendorPage(vendor._id);
   return success(res, { vendor }, 'Availability updated.');
 });
 

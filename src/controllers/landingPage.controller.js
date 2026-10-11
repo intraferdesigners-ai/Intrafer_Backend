@@ -21,6 +21,7 @@ const {
 } = require('../services/landingPage.service');
 
 const { escapeRegex } = require('../utils/regex');
+const cache = require('../utils/revalidate');
 
 // Body fields an admin may write. Slugs, publishedAt and
 // createdBy/updatedBy are always derived server-side.
@@ -56,6 +57,25 @@ function publicPath(level, categorySlug, stateSlug, citySlug) {
   if (level === 'category') return `/${categorySlug}/`;
   if (level === 'state') return `/${categorySlug}/${stateSlug}/`;
   return `/${categorySlug}/${stateSlug}/${citySlug}/`;
+}
+
+// Purges the frontend's 'landing' tag plus these pages' public paths.
+// Fire-and-forget (never awaited, never throws): call after the write.
+function purgeLandingPages(pages = []) {
+  const list = pages.filter(Boolean);
+  const categoryId = (p) => String(p.category?._id || p.category);
+  Promise.resolve()
+    .then(() => (list.length ? ServiceCategory.find({ _id: { $in: list.map(categoryId) } }).select('slug') : []))
+    .then((cats) => {
+      const slugs = new Map(cats.map((c) => [String(c._id), c.slug]));
+      return cache.purgeLanding([...new Set(list
+        .filter((p) => slugs.get(categoryId(p)))
+        .map((p) => publicPath(levelOf(p), slugs.get(categoryId(p)), p.stateSlug, p.citySlug)))]);
+    })
+    .catch((err) => {
+      console.error(`[revalidate] landing path lookup failed: ${err.message}`);
+      cache.purgeLanding();
+    });
 }
 
 const duplicateMessage = (page) => {
@@ -248,6 +268,7 @@ const createLandingPage = catchAsync(async (req, res) => {
   if (failed) return failed;
   await recordSafely(page, { kind: 'create', adminId: req.user._id });
 
+  purgeLandingPages([page]);
   return success(res, { page }, 'Landing page created.', 201);
 });
 
@@ -263,11 +284,13 @@ const updateLandingPage = catchAsync(async (req, res) => {
   }
   delete data.level;
   const previousStatus = page.status;
+  const before = { level: page.level, category: page.category, stateSlug: page.stateSlug, citySlug: page.citySlug };
   // The editor's Unpublish sends exactly { status: 'draft' }.
   if (Object.keys(data).length === 1 && data.status === 'draft') {
     await unpublishPage(page, req.user._id);
     // Content is unchanged; the version records the takedown.
     if (previousStatus !== 'draft') await recordSafely(page, { kind: 'unpublish', adminId: req.user._id });
+    purgeLandingPages([page]);
     return success(res, { page }, 'Landing page updated.');
   }
   const restoredFrom = await validRestoredFrom(req.body?.restoredFrom, page._id);
@@ -298,6 +321,7 @@ const updateLandingPage = catchAsync(async (req, res) => {
   if (page.status !== previousStatus) kind = page.status === 'published' ? 'publish' : 'unpublish';
   await recordSafely(page, { kind, adminId: req.user._id, restoredFrom });
 
+  purgeLandingPages([before, page]); // old path too, in case the category moved
   return success(res, { page }, 'Landing page updated.');
 });
 
@@ -308,6 +332,7 @@ const deleteLandingPage = catchAsync(async (req, res) => {
   const page = await LandingPage.findByIdAndDelete(req.params.id);
   if (!page) return error(res, 'Landing page not found.', 404);
   await versionService.deleteVersionsFor(page._id);
+  purgeLandingPages([page]);
   return success(res, {}, 'Landing page deleted.');
 });
 
@@ -576,6 +601,7 @@ const duplicateLandingPage = catchAsync(async (req, res) => {
     warnings: warnings.length,
   };
 
+  purgeLandingPages([page]);
   return success(res, { page, warnings }, 'Draft created.', 201);
 });
 
@@ -688,6 +714,7 @@ const bulkCreateLandingPages = catchAsync(async (req, res) => {
   const failed = results.filter((r) => r.status === 'failed').length;
   const summary = { created, failed, skipped: results.length - created - failed };
   res.locals.auditDetails = { ...summary, templateId: template ? String(template._id) : null, category: String(category) };
+  cache.purgeLanding(); // drafts only, but keep the tag in step
   return success(res, { results, summary, warnings });
 });
 
@@ -708,6 +735,7 @@ const bulkLandingPageAction = catchAsync(async (req, res) => {
   const byId = new Map(docs.map((d) => [String(d._id), d]));
 
   const results = [];
+  const touched = [];
   for (const id of unique) {
     const page = byId.get(id);
     if (!page) {
@@ -719,6 +747,7 @@ const bulkLandingPageAction = catchAsync(async (req, res) => {
         await LandingPage.deleteOne({ _id: page._id });
         await versionService.deleteVersionsFor(page._id);
         results.push({ id, status: 'ok' });
+        touched.push(page);
         continue;
       }
       const target = action === 'publish' ? 'published' : 'draft';
@@ -736,6 +765,7 @@ const bulkLandingPageAction = catchAsync(async (req, res) => {
       }
       await recordSafely(page, { kind: action, adminId: req.user._id });
       results.push({ id, status: 'ok' });
+      touched.push(page);
     } catch (err) {
       const message = err.name === 'ValidationError'
         ? Object.values(validationErrors(err)).join(', ')
@@ -747,6 +777,7 @@ const bulkLandingPageAction = catchAsync(async (req, res) => {
   const summary = { ok: 0, unchanged: 0, failed: 0, not_found: 0 };
   for (const r of results) summary[r.status] += 1;
   res.locals.auditDetails = { action, ...summary, ids: unique.slice(0, MAX_BULK_ACTION_IDS) };
+  if (touched.length) purgeLandingPages(touched);
   return success(res, { results, summary });
 });
 
