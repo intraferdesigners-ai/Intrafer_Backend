@@ -203,12 +203,28 @@ const getVendorById = catchAsync(async (req, res) => {
   return success(res, { vendor });
 });
 
+// Same limit as the frontend's compare tray (context/CompareContext.jsx).
+const MAX_COMPARE_IDS = 4;
+const OBJECT_ID = /^[a-f0-9]{24}$/i;
+
+// ?ids=<id>,<id>,... — at most MAX_COMPARE_IDS vendor ObjectIds. Missing or
+// empty -> []. Anything malformed is a 400 rather than a cast error (500):
+// a repeated ?ids= (an array), bracket forms (?ids[]=a, ?ids[$ne]=x — with
+// Express 5's simple query parser these arrive as keys named "ids[...]"),
+// too many ids, or an id that isn't a 24-hex ObjectId. Valid but
+// unknown/hidden ids just aren't listed.
 const getVendorsByIds = catchAsync(async (req, res) => {
   const { ids } = req.query;
-  if (!ids) return success(res, { vendors: [] });
+  const bracketForm = Object.keys(req.query).some((key) => key.startsWith('ids['));
+  if (bracketForm || (ids !== undefined && typeof ids !== 'string')) {
+    return error(res, 'ids must be a comma-separated list of vendor ids.', 400);
+  }
+  if (ids === undefined || ids === '') return success(res, { vendors: [] });
 
-  const idList = ids.split(',').filter(Boolean).slice(0, 4);
+  const idList = [...new Set(ids.split(',').map((id) => id.trim()).filter(Boolean))];
   if (idList.length === 0) return success(res, { vendors: [] });
+  if (idList.length > MAX_COMPARE_IDS) return error(res, `Compare at most ${MAX_COMPARE_IDS} vendors at a time.`, 400);
+  if (!idList.every((id) => OBJECT_ID.test(id))) return error(res, 'Invalid vendor id.', 400);
 
   const vendors = await Vendor.find({
     _id: { $in: idList },
