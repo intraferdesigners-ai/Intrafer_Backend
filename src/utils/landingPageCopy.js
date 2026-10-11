@@ -1,4 +1,5 @@
 const { slugify } = require('./slug');
+const { escapeRegex } = require('./regex');
 
 // Copying one landing page's content onto a new location (duplicate and
 // bulk create, Phase 4A; state/category pages, Phase 4C). Pure — exercised by scripts/testLandingBulk.js.
@@ -41,8 +42,6 @@ function copyContent(source) {
 function normaliseLocation(value) {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
-
-const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Case-insensitive whole-word match: the name may not touch another letter
 // or digit on either side, so "Pune" matches "Pune's" and "(Pune)" but not

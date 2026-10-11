@@ -3,7 +3,7 @@ const Category = require('../models/Category.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
 
-const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const { escapeRegex } = require('../utils/regex');
 
 // ── Cities ──────────────────────────────────────────────────────────────
 

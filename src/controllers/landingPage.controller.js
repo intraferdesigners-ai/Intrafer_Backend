@@ -20,7 +20,7 @@ const {
   computeIndexable, resolvePlaceWithAliases, isSimilarSlug,
 } = require('../services/landingPage.service');
 
-const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const { escapeRegex } = require('../utils/regex');
 
 // Body fields an admin may write. Slugs, publishedAt and
 // createdBy/updatedBy are always derived server-side.

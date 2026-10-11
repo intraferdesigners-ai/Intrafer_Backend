@@ -8,6 +8,7 @@ const { success, error } = require('../utils/apiResponse');
 const paginate = require('../utils/paginate');
 const { resolveCategory, resolveState, resolvePlaceInState } = require('../utils/resolveTaxonomy');
 const { meetsIndexThreshold } = require('../utils/indexThreshold');
+const { queryString, containsRegex } = require('../utils/regex');
 const { VISIBLE_VENDOR, PUBLIC_PROJECT, publicProjectFilter, visibleVendorPopulate } = require('../utils/publicVisibility');
 
 const SORT_MAP = {
@@ -94,7 +95,10 @@ async function attachCardImages(vendors) {
 }
 
 const getVendors = catchAsync(async (req, res) => {
-  const { city, locality, specialization, sort, featured, category, state } = req.query;
+  // Strings only, capped — arrays/objects from the query string are dropped.
+  const [city, locality, specialization, sort, category, state] =
+    ['city', 'locality', 'specialization', 'sort', 'category', 'state'].map((k) => queryString(req.query[k]));
+  const { featured } = req.query;
 
   const filter = { isApproved: true, isListingEnabled: true };
   // Set only in the category+state+city branch below — the real-cased
@@ -140,13 +144,13 @@ const getVendors = catchAsync(async (req, res) => {
     // OR as an extra term, in case a vendor happened to enter a neighborhood
     // name into one of these city fields.
     if (city || locality) {
-      const terms = [city, locality].filter(Boolean).map((t) => new RegExp(t, 'i'));
+      const terms = [city, locality].filter(Boolean).map(containsRegex);
       filter.$or = [
         { 'location.city': { $in: terms } },
         { 'serviceLocations.city': { $in: terms } },
       ];
     }
-    if (specialization) filter.specializations = { $in: [new RegExp(specialization, 'i')] };
+    if (specialization) filter.specializations = { $in: [containsRegex(specialization)] };
   }
 
   if (featured === 'true') filter.isFeatured = true;
@@ -259,11 +263,13 @@ const getSimilarVendors = catchAsync(async (req, res) => {
 });
 
 const getGallery = catchAsync(async (req, res) => {
-  const { room, style, page, limit } = req.query;
+  const { page, limit } = req.query;
+  const room = containsRegex(req.query.room);
+  const style = containsRegex(req.query.style);
 
   const filter = await publicProjectFilter();
-  if (room) filter.projectType = { $regex: new RegExp(room, 'i') };
-  if (style) filter.style = { $regex: new RegExp(style, 'i') };
+  if (room) filter.projectType = { $regex: room };
+  if (style) filter.style = { $regex: style };
 
   // Optional pagination — added so every approved project can eventually
   // be enumerated (e.g. for sitemap inclusion, not wired up yet), the same
