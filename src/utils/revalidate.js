@@ -148,7 +148,20 @@ const purgeTaxonomy = () => safely('purgeTaxonomy', () => module.exports.purge({
 
 const purgeHomepage = () => safely('purgeHomepage', () => module.exports.purge({ tags: [TAGS.HOMEPAGE] }));
 
+// Plan prices live in code (config/plans.js), so they only change with a
+// deploy: purge on boot, and again once the deploy has had time to take
+// traffic, so a regeneration that hit the outgoing instance in between
+// doesn't keep the old prices for a whole revalidate window.
+const PLANS_REPURGE_MS = 120000;
+const purgePlans = () => safely('purgePlans', () => module.exports.purge({ tags: [TAGS.PLANS] }));
+const purgePlansOnBoot = () => {
+  purgePlans();
+  const timer = setTimeout(purgePlans, PLANS_REPURGE_MS);
+  if (timer.unref) timer.unref();
+};
+
 module.exports = {
   purge, purgeVendor, purgeVendorPage, purgeProject, purgeReview, purgeLanding, purgeTaxonomy, purgeHomepage,
+  purgePlans, purgePlansOnBoot,
   TIMEOUT_MS, MAX_TAGS, RETRY_DELAYS_MS,
 };

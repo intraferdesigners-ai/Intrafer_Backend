@@ -9,6 +9,7 @@ const razorpayService = require('../services/razorpay.service');
 const notifService = require('../services/notification.service');
 const { validateCoupon } = require('./coupon.controller');
 const cache = require('../utils/revalidate');
+const { findPlan, sellablePlans, publicPlan } = require('../config/plans');
 
 const formatINR = (amountInPaisa) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amountInPaisa / 100);
@@ -24,22 +25,25 @@ const generateInvoiceNumber = async () => {
   }
 };
 
-// price is in paise (matches Razorpay's expected unit and planPrice storage)
-const PLANS = [
-  { name: '1 Month',  price: 599900,  leadsPerMonth: 10, durationDays: 30  },
-  { name: '6 Month',  price: 1499900, leadsPerMonth: 10, durationDays: 180 },
-  { name: '12 Month', price: 1999900, leadsPerMonth: 10, durationDays: 365 },
-];
-
 const getPlans = catchAsync(async (req, res) => {
-  return success(res, { plans: PLANS });
+  return success(res, { plans: sellablePlans().map(publicPlan) });
 });
+
+// A plan that can be bought right now, or an error message. Legacy plans
+// still resolve (findPlan) but can't be bought.
+const resolveSellable = (planName) => {
+  const plan = findPlan(planName);
+  if (!plan) return { message: 'Invalid plan.' };
+  if (!plan.sellable) return { message: `The ${plan.name} plan is no longer available. Please choose one of the current plans.` };
+  return { plan };
+};
 
 const createOrder = catchAsync(async (req, res) => {
   const { planName, couponCode } = req.body;
 
-  const plan = PLANS.find((p) => p.name === planName);
-  if (!plan) return error(res, 'Invalid plan.', 400);
+  // The amount charged always comes from the server's PLANS, never the client.
+  const { plan, message } = resolveSellable(planName);
+  if (!plan) return error(res, message, 400);
 
   const vendor = await Vendor.findOne({ userId: req.user._id });
   if (!vendor) return error(res, 'Vendor profile not found.', 404);
@@ -54,6 +58,12 @@ const createOrder = catchAsync(async (req, res) => {
     discountAmount = result.discountAmount;
     amount = plan.price - discountAmount;
     appliedCouponCode = result.coupon.code;
+  }
+
+  // Razorpay's minimum is ₹1 (100 paise); never send a zero/negative/fractional amount.
+  if (!Number.isInteger(amount) || amount < 100) {
+    console.error(`[Subscription] Refusing order: computed amount ${amount} for plan '${plan.name}' (coupon '${appliedCouponCode}').`);
+    return error(res, 'This coupon cannot be applied to the selected plan.', 400);
   }
 
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
@@ -137,8 +147,8 @@ const checkCoupon = catchAsync(async (req, res) => {
   const { code, planName } = req.body;
   if (!code) return error(res, 'Coupon code is required.', 400);
 
-  const plan = PLANS.find((p) => p.name === planName);
-  if (!plan) return error(res, 'Invalid plan.', 400);
+  const { plan, message } = resolveSellable(planName);
+  if (!plan) return error(res, message, 400);
 
   const result = await validateCoupon(code, planName, plan.price);
   if (!result.valid) return error(res, result.reason, 400);
@@ -238,7 +248,7 @@ const downloadInvoice = catchAsync(async (req, res) => {
 //   'already_active' — idempotent no-op; an earlier verify/webhook activated it
 //   'not_found'      — no subscription for this order
 //   'not_activatable'— cancelled/expired; never revived by a payment event
-//   'unknown_plan'   — subscription's plan no longer exists in PLANS
+//   'unknown_plan'   — subscription's plan name isn't in PLANS (sellable or legacy)
 const activateFromPayment = async ({ orderId, paymentId }) => {
   const sub = await Subscription.findOne({ razorpayOrderId: orderId });
   // Only an unpaid order can activate. 'active' means client-side verify or the
@@ -250,7 +260,10 @@ const activateFromPayment = async ({ orderId, paymentId }) => {
   if (sub.status === 'active') return 'already_active';
   if (!['pending', 'failed'].includes(sub.status)) return 'not_activatable';
 
-  const plan = PLANS.find((p) => p.name === sub.planName);
+  // Legacy (no longer sellable) plans resolve too: an order created before a
+  // price change can still be paid. Only durationDays is read; the amount is
+  // the stored planPrice.
+  const plan = findPlan(sub.planName);
   if (!plan) {
     console.error(`[Subscription] Cannot activate ${sub._id} (order ${orderId}, payment ${paymentId}): plan '${sub.planName}' no longer exists in PLANS.`);
     return 'unknown_plan';

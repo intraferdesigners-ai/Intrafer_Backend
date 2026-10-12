@@ -10,6 +10,7 @@ const TAGS = Object.freeze({
   HOMEPAGE: 'homepage',   // CMS settings (hero subtitle)
   TAXONOMY: 'taxonomy',   // categories/places: category-cities links, sitemap
   LANDING: 'landing',     // admin landing pages: sitemap now, the pages themselves in batch 3
+  PLANS: 'plans',         // subscription plan prices: /plans, /for-designers (purged on every boot)
 });
 
 const TAG_PREFIXES = Object.freeze({

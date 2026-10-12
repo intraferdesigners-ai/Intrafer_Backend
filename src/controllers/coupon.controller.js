@@ -1,6 +1,17 @@
 const Coupon = require('../models/Coupon.model');
 const catchAsync = require('../utils/catchAsync');
 const { success, error } = require('../utils/apiResponse');
+const { findPlan } = require('../config/plans');
+
+// applicablePlans may only name plans that are currently sold; a legacy or
+// misspelled name would silently make the coupon apply to nothing. Returns an
+// error message or null.
+const invalidApplicablePlans = (applicablePlans) => {
+  if (applicablePlans === undefined) return null;
+  if (!Array.isArray(applicablePlans)) return 'applicablePlans must be a list of plan names.';
+  const bad = applicablePlans.filter((name) => !findPlan(name)?.sellable);
+  return bad.length ? `applicablePlans contains plans that are not currently sold: ${bad.join(', ')}.` : null;
+};
 
 const getAllCoupons = catchAsync(async (req, res) => {
   const coupons = await Coupon.find().sort({ createdAt: -1 });
@@ -12,6 +23,8 @@ const createCoupon = catchAsync(async (req, res) => {
   if (!code || !discountType || discountValue === undefined) {
     return error(res, 'code, discountType, and discountValue are required.', 400);
   }
+  const plansError = invalidApplicablePlans(applicablePlans);
+  if (plansError) return error(res, plansError, 400);
 
   const normalizedCode = code.toUpperCase().trim();
   const existing = await Coupon.findOne({ code: normalizedCode });
@@ -33,6 +46,8 @@ const createCoupon = catchAsync(async (req, res) => {
 
 const updateCoupon = catchAsync(async (req, res) => {
   const { code, discountType, discountValue, maxUses, applicablePlans, validFrom, validUntil, isActive } = req.body;
+  const plansError = invalidApplicablePlans(applicablePlans);
+  if (plansError) return error(res, plansError, 400);
 
   const updates = {};
   if (code !== undefined) updates.code = code.toUpperCase().trim();
@@ -77,6 +92,12 @@ const validateCoupon = async (code, planName, planPrice) => {
     return { valid: false, reason: 'This coupon has reached its usage limit.' };
   }
   if (coupon.applicablePlans?.length > 0 && !coupon.applicablePlans.includes(planName)) {
+    return { valid: false, reason: 'This coupon is not applicable to the selected plan.' };
+  }
+
+  // A flat discount that covers the whole price (e.g. one sized for an older,
+  // higher price) is rejected rather than clamped down to a ₹1 order.
+  if (coupon.discountType === 'flat' && coupon.discountValue >= planPrice) {
     return { valid: false, reason: 'This coupon is not applicable to the selected plan.' };
   }
 

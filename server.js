@@ -5,6 +5,7 @@ const connectDB = require('./src/config/db');
 const app = require('./src/app');
 const { startJobs } = require('./src/jobs/subscriptionExpiry.job');
 const { startJobs: startOnboardingNudgeJob } = require('./src/jobs/onboardingNudge.job');
+const cache = require('./src/utils/revalidate');
 
 const PORT = process.env.PORT || 5000;
 
@@ -18,6 +19,7 @@ const start = async () => {
     console.log(`[SERVER] Health check: http://localhost:${PORT}/health`);
     startJobs();
     startOnboardingNudgeJob();
+    cache.purgePlansOnBoot(); // plan prices may have changed with this deploy
   });
 
   process.on('unhandledRejection', (err) => {

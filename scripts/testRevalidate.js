@@ -69,7 +69,7 @@ async function until(pred, ms = 2000) {
 
   try {
     await test('tag constants are exactly the agreed set', () => {
-      assert.deepStrictEqual(Object.values(TAGS).sort(), ['homepage', 'landing', 'projects', 'reviews', 'stats', 'taxonomy', 'vendors']);
+      assert.deepStrictEqual(Object.values(TAGS).sort(), ['homepage', 'landing', 'plans', 'projects', 'reviews', 'stats', 'taxonomy', 'vendors']);
       assert.deepStrictEqual(TAG_PREFIXES, { VENDOR: 'vendor:', PROJECT: 'project:' });
       assert.strictEqual(vendorTag('abc'), 'vendor:abc');
       assert.strictEqual(projectTag('p1'), 'project:p1');
@@ -240,6 +240,29 @@ async function until(pred, ms = 2000) {
         Project.find = realFind;
       }
       assert.deepStrictEqual(sent, [{ tags: ['vendors', 'vendor:v9', 'projects', 'stats', 'landing', 'project:p1', 'project:p2'] }]);
+    });
+
+    await test('purgePlans sends the plans tag; purgePlansOnBoot purges now and again later (unref\'d)', async () => {
+      const sent = [];
+      const realPurge = cache.purge;
+      const realSetTimeout = global.setTimeout;
+      const timers = [];
+      cache.purge = async (payload) => { sent.push(payload); return true; };
+      global.setTimeout = (fn, ms) => { const t = { fn, ms, unrefd: false, unref() { this.unrefd = true; } }; timers.push(t); return t; };
+      try {
+        assert.strictEqual(await cache.purgePlans(), true);
+        cache.purgePlansOnBoot();
+        await new Promise((r) => setImmediate(r));
+        const later = timers.filter((t) => t.ms >= 60000);
+        assert.strictEqual(later.length, 1);
+        assert.ok(later[0].unrefd);
+        later[0].fn();
+        await new Promise((r) => setImmediate(r));
+      } finally {
+        cache.purge = realPurge;
+        global.setTimeout = realSetTimeout;
+      }
+      assert.deepStrictEqual(sent, [{ tags: ['plans'] }, { tags: ['plans'] }, { tags: ['plans'] }]);
     });
 
     await test('purgeVendor: a DB failure is logged, never thrown', async () => {
