@@ -335,16 +335,20 @@ const getStats = catchAsync(async (req, res) => {
     Vendor.countDocuments({ isApproved: true, isListingEnabled: true }),
     publicProjectFilter().then((filter) => Project.countDocuments(filter)),
     Lead.countDocuments(),
-    Vendor.aggregate([
-      { $match: { isApproved: true, isListingEnabled: true } },
-      { $group: { _id: null, avg: { $avg: '$rating' } } },
+    // Stored reviews themselves (same source as getSiteReviews), not an
+    // average of Vendor.rating — that averaged unrated vendors in as 0s.
+    Review.aggregate([
+      { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } },
     ]),
     Vendor.countDocuments({ isFeatured: true, isApproved: true }),
   ]);
 
-  const avgRating = ratingAgg[0]?.avg ? Number(ratingAgg[0].avg).toFixed(1) : '4.8';
+  // null, never a made-up figure, when there are no reviews yet — callers
+  // hide the rating instead. reviewCount lets them judge how much it's worth.
+  const reviewCount = ratingAgg[0]?.count ?? 0;
+  const avgRating = reviewCount > 0 ? Number(ratingAgg[0].avg).toFixed(1) : null;
 
-  return success(res, { vendorCount, projectCount, enquiryCount, avgRating, featuredCount });
+  return success(res, { vendorCount, projectCount, enquiryCount, avgRating, reviewCount, featuredCount });
 });
 
 const getFeaturedProjects = catchAsync(async (req, res) => {
