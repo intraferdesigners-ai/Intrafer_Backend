@@ -22,6 +22,7 @@ const {
 
 const { escapeRegex } = require('../utils/regex');
 const cache = require('../utils/revalidate');
+const { duplicateReport, templateDuplicateReport } = require('../services/landingDuplicates.service');
 
 // Body fields an admin may write. Slugs, publishedAt and
 // createdBy/updatedBy are always derived server-side.
@@ -231,7 +232,13 @@ const getLandingPages = catchAsync(async (req, res) => {
     .populate('category', 'name slug')
     .populate('updatedBy', 'name');
 
-  return success(res, { pages, total, page, totalPages });
+  // Duplicate-text warning (advisory): pages whose intro/sections match
+  // other pages of the same level+category once their own names are
+  // neutralised. null when there's no match.
+  const dups = await duplicateReport(pages);
+  const withDups = pages.map((p) => ({ ...(typeof p.toObject === 'function' ? p.toObject() : p), duplicates: dups[String(p._id)] || null }));
+
+  return success(res, { pages: withDups, total, page, totalPages });
 });
 
 const getLandingPageById = catchAsync(async (req, res) => {
@@ -241,7 +248,9 @@ const getLandingPageById = catchAsync(async (req, res) => {
     .populate('createdBy', 'name email')
     .populate('updatedBy', 'name email');
   if (!page) return error(res, 'Landing page not found.', 404);
-  return success(res, { page });
+  // Duplicate-text warning for the editor's checklist (saved version).
+  const duplicates = (await duplicateReport([page]))[String(page._id)] || null;
+  return success(res, { page, duplicates });
 });
 
 const createLandingPage = catchAsync(async (req, res) => {
@@ -683,7 +692,11 @@ const bulkCreateLandingPages = catchAsync(async (req, res) => {
     });
     const summary = { total: results.length };
     for (const r of results) summary[r.status] = (summary[r.status] || 0) + 1;
-    return success(res, { results, summary, warnings });
+    // Every page created from the template copies its text: list the
+    // existing pages it already matches (advisory, shown before creating).
+    const creatable = results.filter((r) => r.status === 'ok' || r.status === 'similar').length;
+    const textDuplicates = await templateDuplicateReport(template, category, creatable);
+    return success(res, { results, summary, warnings, textDuplicates });
   }
 
   // Sequential writes: ≤50 items, and each save is validated on its own.
