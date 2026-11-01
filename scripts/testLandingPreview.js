@@ -49,7 +49,7 @@ const PAGES = [draft, published];
 
 // Thenable stand-in for a Mongoose query: chainable, resolves to `value`.
 const query = (value) => {
-  const q = { select: () => q, populate: () => q, sort: () => q, limit: () => q, then: (ok, ko) => Promise.resolve(value).then(ok, ko) };
+  const q = { select: () => q, populate: () => q, sort: () => q, skip: () => q, limit: () => q, then: (ok, ko) => Promise.resolve(value).then(ok, ko) };
   return q;
 };
 const matches = (doc, filter) => Object.entries(filter).every(([k, v]) => String(doc[k]) === String(v));
@@ -161,7 +161,7 @@ async function check(name, fn) {
   await check('published page, no token → unchanged (no preview key, normal indexable)', async () => {
     const r = await publicGet('noida');
     assert.strictEqual(r.body.data.page.heading, 'LIVE');
-    assert.deepStrictEqual(Object.keys(r.body.data), ['page', 'vendors', 'vendorCount', 'indexable']);
+    assert.deepStrictEqual(Object.keys(r.body.data), ['page', 'vendors', 'vendorCount', 'vendorPage', 'vendorPages', 'indexable']);
     assert.strictEqual(r.body.data.indexable, true);
     assert.strictEqual(r.headers['cache-control'], undefined);
   });

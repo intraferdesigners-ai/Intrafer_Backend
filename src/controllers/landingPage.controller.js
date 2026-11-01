@@ -849,6 +849,10 @@ const PUBLIC_OMIT = '-createdBy -updatedBy -__v';
 // { page, vendors, vendorCount, indexable, level }, where vendors stays []
 // unless the page turned its "Top vendors" block on (vendorCount is always
 // there, for {{vendorCount}}).
+// City pages list their vendors 12 per page (?vendorPage=N, default 1),
+// in the page's chosen sort; the response adds vendorPage and vendorPages.
+const CITY_VENDOR_PAGE_SIZE = 12;
+
 const getPublicLandingPage = catchAsync(async (req, res) => {
   const { category, state, city, preview } = req.query;
   if (!category) return error(res, 'category is required.', 400);
@@ -877,20 +881,26 @@ const getPublicLandingPage = catchAsync(async (req, res) => {
   if (!isPreview) page = await findPage({ ...key, status: 'published' });
 
   const sort = page?.vendorList?.sort || 'featured';
-  const limit = page?.vendorList?.limit || 12;
   const indexing = page?.seo?.indexing || 'auto';
+  const rawPage = typeof req.query.vendorPage === 'string' ? req.query.vendorPage : '1';
+  if (!/^[1-9]\d{0,3}$/.test(rawPage)) return error(res, 'Invalid vendorPage.', 400);
+  const vendorPage = Number(rawPage);
 
   const { filter } = await buildVendorFilter(serviceCategory._id, stateSlug, citySlug);
   const vendorCount = await Vendor.countDocuments(filter);
+  // Ties broken by _id so consecutive pages never repeat or skip a vendor.
   const vendors = await Vendor.find(filter)
-    .sort(VENDOR_SORT[sort] || VENDOR_SORT.featured)
-    .limit(limit)
+    .sort({ ...(VENDOR_SORT[sort] || VENDOR_SORT.featured), _id: 1 })
+    .skip((vendorPage - 1) * CITY_VENDOR_PAGE_SIZE)
+    .limit(CITY_VENDOR_PAGE_SIZE)
     .populate('userId', 'name');
 
   const body = {
     page: page || null,
     vendors: await attachCardImages(vendors),
     vendorCount,
+    vendorPage,
+    vendorPages: Math.max(1, Math.ceil(vendorCount / CITY_VENDOR_PAGE_SIZE)),
     indexable: isPreview ? false : computeIndexable('city', indexing, vendorCount),
   };
   if (isPreview) {

@@ -157,7 +157,9 @@ const getVendors = catchAsync(async (req, res) => {
   if (featured === 'true') filter.isFeatured = true;
 
   const baseSort = SORT_MAP[sort] || SORT_MAP.rating;
-  const sortObj = { isFeatured: -1, ...baseSort };
+  // _id last: a stable order for ties (most vendors share rating 0), so
+  // paging (/vendors/?page=N, city pages) never repeats or skips a vendor.
+  const sortObj = { isFeatured: -1, ...baseSort, _id: 1 };
 
   const total = await Vendor.countDocuments(filter);
   const { skip, limit, page, totalPages } = paginate(req.query, total);

@@ -372,10 +372,11 @@ async function check(name, fn) {
     assert.deepStrictEqual([r.body.data.indexable], [true]);
   });
 
-  await check('public: city response shape unchanged (no level key) and ignores hub pages', async () => {
+  await check('public: city response shape (no level key; + vendorPage/vendorPages since pagination) and ignores hub pages', async () => {
     await update(cityPage._id, { status: 'published' });
     const r = await publicGet({ category: CAT.slug, state: 'maharashtra', city: 'pune' });
-    assert.deepStrictEqual(Object.keys(r.body.data), ['page', 'vendors', 'vendorCount', 'indexable']);
+    assert.deepStrictEqual(Object.keys(r.body.data), ['page', 'vendors', 'vendorCount', 'vendorPage', 'vendorPages', 'indexable']);
+    assert.deepStrictEqual([r.body.data.vendorPage, r.body.data.vendorPages], [1, 1]);
     assert.strictEqual(r.body.data.page.level, 'city');
     assert.strictEqual(r.body.data.vendorCount, 2);
     assert.strictEqual(r.body.data.indexable, false); // auto, 2 < 3
